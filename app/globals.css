@@ -1107,280 +1107,9 @@ kbd {
   background: #2b2a26;
 }
 
-.delivery-button-share {
-  border-color: var(--ink);
-  background: var(--lime);
-}
-
-.delivery-button-share:hover:not(:disabled) {
-  background: #d7ff50;
-}
-
 .delivery-button svg {
   width: 13px;
   height: 13px;
-}
-
-.share-overlay {
-  position: fixed;
-  z-index: 300;
-  inset: 0;
-  display: grid;
-  padding: 24px;
-  place-items: center;
-  overflow-y: auto;
-  background: rgba(17, 17, 15, 0.76);
-  backdrop-filter: blur(10px);
-  animation: shareFadeIn 220ms ease both;
-}
-
-.share-dialog {
-  position: relative;
-  width: min(760px, 100%);
-  padding: 32px;
-  overflow: hidden;
-  border: 1px solid var(--ink);
-  border-radius: 8px;
-  background:
-    radial-gradient(circle at 88% 5%, rgba(192, 248, 66, 0.34), transparent 27%),
-    var(--paper);
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.34);
-  animation: shareRiseIn 320ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
-}
-
-.share-dialog::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--ember) 0 33%, var(--lime) 33% 66%, var(--sky) 66%);
-  content: "";
-}
-
-.share-close {
-  position: absolute;
-  z-index: 1;
-  top: 22px;
-  right: 22px;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: rgba(255, 253, 246, 0.76);
-  color: var(--ink);
-  cursor: pointer;
-  place-items: center;
-}
-
-.share-close svg {
-  width: 15px;
-  height: 15px;
-}
-
-.share-kicker {
-  display: flex;
-  padding-right: 44px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.share-kicker span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.share-kicker svg {
-  width: 13px;
-  height: 13px;
-  color: var(--ink);
-}
-
-.share-kicker i {
-  font-style: normal;
-}
-
-.share-dialog h2 {
-  max-width: 600px;
-  margin: 20px 0 8px;
-  font-family: var(--font-display);
-  font-size: clamp(42px, 7vw, 72px);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 0.84;
-}
-
-.share-intro {
-  max-width: 520px;
-  margin: 18px 0 25px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.share-content {
-  display: grid;
-  grid-template-columns: 248px 1fr;
-  gap: 24px;
-}
-
-.share-qr-frame {
-  display: flex;
-  padding: 14px;
-  flex-direction: column;
-  gap: 11px;
-  border: 1px solid var(--ink);
-  background: #fffdf6;
-}
-
-.share-qr-frame img {
-  display: block;
-  width: 100%;
-  height: auto;
-  image-rendering: crisp-edges;
-}
-
-.share-qr-frame span {
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-align: center;
-}
-
-.share-details {
-  display: flex;
-  min-width: 0;
-  padding: 17px 0 3px;
-  flex-direction: column;
-}
-
-.share-ready {
-  width: fit-content;
-  padding: 5px 7px;
-  background: var(--lime);
-  font-family: var(--font-mono);
-  font-size: 6px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-}
-
-.share-details strong {
-  margin-top: 13px;
-  overflow-wrap: anywhere;
-  font-size: 16px;
-  line-height: 1.2;
-}
-
-.share-details p {
-  margin: 8px 0 20px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.share-details label {
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.share-details input {
-  width: 100%;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.44);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 7px;
-}
-
-.share-actions {
-  display: flex;
-  margin-top: 9px;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.share-actions button,
-.share-actions a {
-  display: inline-flex;
-  min-height: 38px;
-  padding: 0 13px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid var(--ink);
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-decoration: none;
-  text-transform: uppercase;
-}
-
-.share-actions button {
-  flex: 1;
-  background: var(--ink);
-  color: var(--paper);
-  cursor: pointer;
-}
-
-.share-actions button svg {
-  width: 12px;
-  height: 12px;
-}
-
-.share-actions a {
-  background: transparent;
-  color: var(--ink);
-}
-
-.share-local-warning {
-  display: grid;
-  margin-top: 20px;
-  padding: 12px 14px;
-  grid-template-columns: 100px 1fr;
-  gap: 12px;
-  border: 1px solid rgba(255, 82, 49, 0.66);
-  background: rgba(255, 82, 49, 0.09);
-  color: #4b2a22;
-  font-size: 9px;
-  line-height: 1.45;
-}
-
-.share-local-warning strong {
-  font-family: var(--font-mono);
-  font-size: 7px;
-  letter-spacing: 0.09em;
-}
-
-@keyframes shareFadeIn {
-  from { opacity: 0; }
-}
-
-@keyframes shareRiseIn {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.985);
-  }
 }
 
 .export-deck {
@@ -1713,6 +1442,109 @@ kbd {
 .waveform.is-active span {
   background: var(--ember);
   animation: wave 680ms calc(var(--bar) * -41ms) ease-in-out infinite alternate;
+}
+
+.microphone-picker {
+  margin-top: 12px;
+  padding: 10px 11px 9px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.microphone-picker.is-live {
+  border-color: color-mix(in srgb, var(--lime) 72%, var(--line));
+  background: color-mix(in srgb, var(--lime) 7%, rgba(255, 255, 255, 0.32));
+}
+
+.microphone-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.microphone-picker-heading label,
+.microphone-picker-heading button,
+.microphone-picker > small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+
+.microphone-picker-heading button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #55524d;
+  cursor: pointer;
+}
+
+.microphone-picker-heading button:hover:not(:disabled) {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.microphone-picker-heading button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.microphone-select-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 12px;
+  min-height: 36px;
+  align-items: center;
+  border: 1px solid rgba(17, 17, 15, 0.3);
+  border-radius: 2px;
+  background: rgba(241, 239, 232, 0.82);
+}
+
+.microphone-select-shell > svg {
+  width: 13px;
+  height: 13px;
+  justify-self: center;
+  stroke-width: 1.8;
+}
+
+.microphone-select-shell select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 5px;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+}
+
+.microphone-select-shell select:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.microphone-select-shell > span {
+  color: var(--muted);
+  font-size: 12px;
+  transform: translateY(-1px);
+}
+
+.microphone-picker > small {
+  display: block;
+  overflow: hidden;
+  margin-top: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mic-button {
@@ -2139,21 +1971,6 @@ kbd {
     justify-content: center;
   }
 
-  .share-overlay {
-    padding: 12px;
-    place-items: start center;
-  }
-
-  .share-dialog {
-    margin: 12px 0;
-    padding: 26px 20px 20px;
-  }
-
-  .share-content {
-    grid-template-columns: 190px 1fr;
-    gap: 18px;
-  }
-
   .hero-layout h1 {
     font-size: clamp(34px, 9vw, 70px);
   }
@@ -2167,28 +1984,6 @@ kbd {
 
   .stage-chrome span:nth-child(2) {
     display: none;
-  }
-
-  .share-kicker i {
-    display: none;
-  }
-
-  .share-dialog h2 {
-    font-size: 43px;
-  }
-
-  .share-content {
-    grid-template-columns: 1fr;
-  }
-
-  .share-qr-frame {
-    width: min(280px, 100%);
-    margin: 0 auto;
-  }
-
-  .share-local-warning {
-    grid-template-columns: 1fr;
-    gap: 5px;
   }
 
   .scene-content {

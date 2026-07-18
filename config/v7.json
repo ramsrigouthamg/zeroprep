@@ -80,24 +80,11 @@
       "version": "1.11.13",
       "format": "jpeg",
       "quality": 0.95
-    },
-    "sharing": {
-      "enabled": true,
-      "format": "pdf",
-      "storage": "vercel_blob",
-      "upload_mode": "client",
-      "blob_library": "@vercel/blob",
-      "blob_library_version": "2.6.1",
-      "max_pdf_bytes": 26214400,
-      "upload_token_ttl_ms": 600000,
-      "cache_control_max_age_seconds": 2592000,
-      "access": "public_unlisted"
     }
   },
   "security": {
     "realtime_requests_per_window": 8,
     "imagery_requests_per_window": 40,
-    "share_tokens_per_window": 12,
     "rate_limit_window_ms": 600000
   }
 }

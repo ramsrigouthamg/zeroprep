@@ -69,16 +69,6 @@
       "version": "1.11.13",
       "format": "jpeg",
       "quality": 0.95
-    },
-    "sharing": {
-      "enabled": true,
-      "format": "pdf",
-      "qr_library": "qrcode",
-      "qr_library_version": "1.5.4",
-      "r2_binding": "PRESENTATIONS",
-      "max_pdf_bytes": 26214400,
-      "public_path": "/s",
-      "access": "anyone_with_link"
     }
   }
 }

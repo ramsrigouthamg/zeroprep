@@ -27,7 +27,6 @@ import {
   CodeXml,
   Coffee,
   Compass,
-  Copy,
   Cpu,
   Crown,
   Database,
@@ -82,7 +81,6 @@ import {
   Podcast,
   Presentation,
   Printer,
-  QrCode,
   Quote,
   Radio,
   Receipt,
@@ -125,7 +123,6 @@ import {
   Wind,
   Workflow,
   Wrench,
-  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -162,13 +159,8 @@ type Scene = {
 type ConnectionState = "ready" | "connecting" | "live" | "error";
 type DeckMutation = "append" | "update" | "view";
 type ExportFormat = "pdf" | "pptx";
-type DeliveryTask = ExportFormat | "share";
 
-type PresentationShare = {
-  url: string;
-  filename: string;
-  isLocal: boolean;
-};
+const MICROPHONE_STORAGE_KEY = "zeroprep.microphone-device-id";
 
 type DirectorCommand = {
   action?: "replace" | "merge_cards" | "focus" | "hold";
@@ -803,13 +795,13 @@ export default function Home() {
   const [history, setHistory] = useState<Scene[]>([INITIAL_SCENE]);
   const [deckScenes, setDeckScenes] = useState<Scene[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [exporting, setExporting] = useState<DeliveryTask | null>(null);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
   const [deliveryMessage, setDeliveryMessage] = useState("Start speaking to build a downloadable deck");
-  const [presentationShare, setPresentationShare] = useState<PresentationShare | null>(null);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
-  const [isShareOpen, setIsShareOpen] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicrophoneId, setSelectedMicrophoneId] = useState("");
+  const [activeMicrophoneLabel, setActiveMicrophoneLabel] = useState("");
+  const [isDetectingMicrophones, setIsDetectingMicrophones] = useState(false);
 
   const sceneRef = useRef(scene);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -829,6 +821,72 @@ export default function Home() {
   useEffect(() => {
     sceneRef.current = scene;
   }, [scene]);
+
+  const refreshMicrophones = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setMicrophones([]);
+      return [];
+    }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(
+      (device, index, items) =>
+        device.kind === "audioinput" &&
+        device.deviceId !== "default" &&
+        items.findIndex(
+          (candidate) =>
+            candidate.kind === "audioinput" && candidate.deviceId === device.deviceId,
+        ) === index,
+    );
+    setMicrophones(audioInputs);
+    return audioInputs;
+  }, []);
+
+  useEffect(() => {
+    const handleDeviceChange = () => void refreshMicrophones();
+    const initialRefresh = window.setTimeout(() => {
+      const storedMicrophoneId = window.localStorage.getItem(MICROPHONE_STORAGE_KEY);
+      if (storedMicrophoneId) setSelectedMicrophoneId(storedMicrophoneId);
+      handleDeviceChange();
+    }, 0);
+    navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
+    };
+  }, [refreshMicrophones]);
+
+  const detectMicrophones = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser does not support microphone selection.");
+      return;
+    }
+
+    setIsDetectingMicrophones(true);
+    setError("");
+    try {
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream.getTracks().forEach((track) => track.stop());
+      await refreshMicrophones();
+    } catch (microphoneError) {
+      setError(
+        microphoneError instanceof Error
+          ? microphoneError.message
+          : "Microphone access was not granted.",
+      );
+    } finally {
+      setIsDetectingMicrophones(false);
+    }
+  }, [refreshMicrophones]);
+
+  const chooseMicrophone = useCallback((deviceId: string) => {
+    setSelectedMicrophoneId(deviceId);
+    if (deviceId) {
+      window.localStorage.setItem(MICROPHONE_STORAGE_KEY, deviceId);
+    } else {
+      window.localStorage.removeItem(MICROPHONE_STORAGE_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     if (connection !== "live" || !isListening) return;
@@ -874,10 +932,6 @@ export default function Home() {
       stagedNext.kind !== "cover" &&
       deckMutation !== "view"
     ) {
-      setPresentationShare(null);
-      setQrCodeDataUrl("");
-      setIsShareOpen(false);
-      setShareCopied(false);
       setDeckScenes((items) => {
         if (deckMutation === "update" && items.length) {
           return [...items.slice(0, -1), stagedNext];
@@ -1088,10 +1142,11 @@ export default function Home() {
     streamRef.current = null;
     audioRef.current = null;
     handledCalls.current.clear();
+    setActiveMicrophoneLabel("");
     setConnection("ready");
     setIsListening(false);
     setDirectorStatus("Presentation stopped");
-    setDeliveryMessage("Presentation stopped — downloads and QR sharing are ready");
+    setDeliveryMessage("Presentation stopped — PDF and PowerPoint downloads are ready");
   }, []);
 
   const startLive = useCallback(async () => {
@@ -1107,14 +1162,32 @@ export default function Home() {
     setDeliveryMessage("Presentation is live — exports unlock when listening stops");
 
     try {
+      const availableMicrophones = await refreshMicrophones();
+      const requestedMicrophoneId = availableMicrophones.some(
+        (device) => device.deviceId === selectedMicrophoneId,
+      )
+        ? selectedMicrophoneId
+        : "";
+      if (selectedMicrophoneId && !requestedMicrophoneId) chooseMicrophone("");
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          ...(requestedMicrophoneId
+            ? { deviceId: { exact: requestedMicrophoneId } }
+            : {}),
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
       streamRef.current = stream;
+      const microphoneTrack = stream.getAudioTracks()[0];
+      setActiveMicrophoneLabel(
+        microphoneTrack?.label ||
+          availableMicrophones.find((device) => device.deviceId === requestedMicrophoneId)?.label ||
+          "System default microphone",
+      );
+      await refreshMicrophones();
 
       const peer = new RTCPeerConnection();
       peerRef.current = peer;
@@ -1171,7 +1244,15 @@ export default function Home() {
           : "Unable to start the live voice session.",
       );
     }
-  }, [connection, handleRealtimeEvent, stopDemo, stopLive]);
+  }, [
+    chooseMicrophone,
+    connection,
+    handleRealtimeEvent,
+    refreshMicrophones,
+    selectedMicrophoneId,
+    stopDemo,
+    stopLive,
+  ]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -1291,79 +1372,6 @@ export default function Home() {
     [captureExportSlides, connection, deckScenes, exporting, isDemoRunning],
   );
 
-  const sharePresentation = useCallback(async () => {
-    if (exporting || !deckScenes.length) return;
-    if (connection === "live" || connection === "connecting" || isDemoRunning) {
-      setDeliveryMessage("Stop the presentation before creating its share QR");
-      return;
-    }
-
-    setError("");
-    setShareCopied(false);
-    setExporting("share");
-    setDeliveryMessage("Rendering and publishing the presentation PDF…");
-
-    try {
-      const images = await captureExportSlides();
-      const fileStem = exportFileStem(deckScenes[0]);
-      const filename = `${fileStem}.pdf`;
-      const pdf = await createPdfDocument(images, deckScenes[0]);
-      const pdfBlob = pdf.output("blob");
-      const shareId = crypto.randomUUID().replaceAll("-", "");
-      const { upload } = await import("@vercel/blob/client");
-      const published = await upload(`presentations/${shareId}/${filename}`, pdfBlob, {
-        access: "public",
-        contentType: "application/pdf",
-        handleUploadUrl: "/api/share",
-        clientPayload: JSON.stringify({ filename }),
-        onUploadProgress: ({ percentage }) => {
-          setDeliveryMessage(`Uploading presentation PDF — ${Math.round(percentage)}%`);
-        },
-      });
-      const publicUrl = published.downloadUrl;
-
-      const qr = await import("qrcode");
-      const dataUrl = await qr.toDataURL(publicUrl, {
-        width: 560,
-        margin: 2,
-        errorCorrectionLevel: "M",
-        color: { dark: "#11110f", light: "#fffdf6" },
-      });
-      const hostname = new URL(publicUrl).hostname;
-      const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-
-      setPresentationShare({
-        url: publicUrl,
-        filename,
-        isLocal,
-      });
-      setQrCodeDataUrl(dataUrl);
-      setIsShareOpen(true);
-      setDeliveryMessage(`Share QR ready — ${deckScenes.length} scenes in one PDF`);
-    } catch (shareError) {
-      const message =
-        shareError instanceof Error
-          ? shareError.message
-          : "The presentation share link could not be created.";
-      setError(message);
-      setDeliveryMessage("QR sharing failed — try again");
-    } finally {
-      setExporting(null);
-      setExportProgress({ current: 0, total: 0 });
-    }
-  }, [captureExportSlides, connection, deckScenes, exporting, isDemoRunning]);
-
-  const copyShareLink = useCallback(async () => {
-    if (!presentationShare) return;
-    try {
-      await navigator.clipboard.writeText(presentationShare.url);
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 1800);
-    } catch {
-      setError("The browser could not copy the share link. You can select it below instead.");
-    }
-  }, [presentationShare]);
-
   const submitLine = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const clean = draftLine.trim();
@@ -1443,8 +1451,21 @@ export default function Home() {
         ? activeDeckIndex + 1
         : deckScenes.length;
   const deliveryStatus = exporting
-    ? `${exporting === "share" ? "Publishing" : "Rendering"} scene ${exportProgress.current} of ${exportProgress.total}`
+    ? `Rendering scene ${exportProgress.current} of ${exportProgress.total}`
     : deliveryMessage;
+  const selectedMicrophone = microphones.find(
+    (device) => device.deviceId === selectedMicrophoneId,
+  );
+  const microphoneHelp =
+    connection === "live"
+      ? `LIVE INPUT / ${activeMicrophoneLabel || "SYSTEM DEFAULT MICROPHONE"}`
+      : isDetectingMicrophones
+        ? "CHECKING MICROPHONE ACCESS…"
+        : microphones.length === 0
+          ? "NO INPUTS FOUND / CONNECT A MICROPHONE AND DETECT AGAIN"
+          : microphones.some((device) => device.label)
+            ? `${microphones.length} INPUT${microphones.length === 1 ? "" : "S"} AVAILABLE`
+            : "DEVICE NAMES HIDDEN / SELECT DETECT TO REVEAL THEM";
 
   return (
     <main className="app-shell">
@@ -1586,16 +1607,6 @@ export default function Home() {
                 <Presentation aria-hidden="true" />
                 <span>{exporting === "pptx" ? "Rendering…" : "PowerPoint"}</span>
               </button>
-              <button
-                className="delivery-button delivery-button-share"
-                type="button"
-                disabled={!canExport || exporting !== null}
-                onClick={() => void sharePresentation()}
-                aria-label="Create a QR code for the completed presentation PDF"
-              >
-                <QrCode aria-hidden="true" />
-                <span>{exporting === "share" ? "Publishing…" : "Share QR"}</span>
-              </button>
             </div>
           </div>
         </section>
@@ -1623,6 +1634,49 @@ export default function Home() {
               </span>
               <span>{directorStatus.toUpperCase()}</span>
             </div>
+          </div>
+
+          <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
+            <div className="microphone-picker-heading">
+              <label htmlFor="microphone-input">MICROPHONE INPUT</label>
+              <button
+                type="button"
+                onClick={() => void detectMicrophones()}
+                disabled={
+                  connection === "live" ||
+                  connection === "connecting" ||
+                  isDetectingMicrophones
+                }
+              >
+                {isDetectingMicrophones ? "DETECTING…" : "DETECT"}
+              </button>
+            </div>
+            <div className="microphone-select-shell">
+              <Headphones aria-hidden="true" />
+              <select
+                id="microphone-input"
+                value={selectedMicrophoneId}
+                onChange={(event) => chooseMicrophone(event.target.value)}
+                disabled={
+                  connection === "live" ||
+                  connection === "connecting" ||
+                  isDetectingMicrophones
+                }
+                aria-describedby="microphone-help"
+              >
+                <option value="">System default microphone</option>
+                {selectedMicrophoneId && !selectedMicrophone && (
+                  <option value={selectedMicrophoneId}>Previously selected microphone</option>
+                )}
+                {microphones.map((device, index) => (
+                  <option key={device.deviceId || `microphone-${index}`} value={device.deviceId}>
+                    {device.label || `Microphone ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+              <span aria-hidden="true">⌄</span>
+            </div>
+            <small id="microphone-help">{microphoneHelp}</small>
           </div>
 
           {connection === "live" ? (
@@ -1702,73 +1756,6 @@ export default function Home() {
           <ExportSlide key={deckScene.id} scene={deckScene} index={index} />
         ))}
       </div>
-
-      {isShareOpen && presentationShare && qrCodeDataUrl && (
-        <div className="share-overlay" role="presentation">
-          <section
-            className="share-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="share-dialog-title"
-          >
-            <button
-              className="share-close"
-              type="button"
-              onClick={() => setIsShareOpen(false)}
-              aria-label="Close presentation sharing"
-            >
-              <X aria-hidden="true" />
-            </button>
-            <div className="share-kicker">
-              <span><QrCode aria-hidden="true" /> TAKE THE DECK WITH YOU</span>
-              <i>PDF / {String(deckScenes.length).padStart(2, "0")} SCENES</i>
-            </div>
-            <h2 id="share-dialog-title">Scan to download<br />the presentation.</h2>
-            <p className="share-intro">
-              Point any phone camera at the code. The complete ZeroPrep deck downloads as one PDF.
-            </p>
-
-            <div className="share-content">
-              <div className="share-qr-frame">
-                {/* QR images are generated locally from the public download URL. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrCodeDataUrl} alt="QR code for downloading this presentation PDF" />
-                <span>SCAN / OPEN / KEEP</span>
-              </div>
-              <div className="share-details">
-                <span className="share-ready">PUBLIC LINK READY</span>
-                <strong>{presentationShare.filename}</strong>
-                <p>Anyone with this unguessable link can download the PDF. No sign-in is required.</p>
-                <label htmlFor="presentation-share-url">DOWNLOAD LINK</label>
-                <input
-                  id="presentation-share-url"
-                  value={presentationShare.url}
-                  readOnly
-                  onFocus={(event) => event.currentTarget.select()}
-                />
-                <div className="share-actions">
-                  <button type="button" onClick={() => void copyShareLink()}>
-                    <Copy aria-hidden="true" />
-                    {shareCopied ? "Copied" : "Copy link"}
-                  </button>
-                  <a href={presentationShare.url} target="_blank" rel="noreferrer">
-                    Test download ↗
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            {presentationShare.isLocal && (
-              <div className="share-local-warning" role="note">
-                <strong>LOCAL PREVIEW</strong>
-                <span>
-                  This QR contains localhost, so it only works on this Mac. Deploy ZeroPrep to make it scannable from phones and shareable anywhere.
-                </span>
-              </div>
-            )}
-          </section>
-        </div>
-      )}
     </main>
   );
 }
