@@ -6,6 +6,12 @@ ZeroPrep listens while you speak and composes a live visual presentation around 
 
 ![ZeroPrep — live presentations, zero prep](public/og.png)
 
+## Demo
+
+[![Watch the ZeroPrep live presentation demo](https://img.youtube.com/vi/aQ153JIfz_8/maxresdefault.jpg)](https://youtu.be/aQ153JIfz_8?si=br4G-JD-QAoSfaKS)
+
+[Watch the ZeroPrep demo on YouTube](https://youtu.be/aQ153JIfz_8?si=br4G-JD-QAoSfaKS)
+
 ## What it does
 
 - Listens continuously until the presenter stops the session
