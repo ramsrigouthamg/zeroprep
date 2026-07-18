@@ -47,6 +47,17 @@
     "diagram_connectors": true,
     "animated_icon_halos": true
   },
+  "imagery": {
+    "enabled": true,
+    "provider": "google_gemini",
+    "model": "gemini-3.1-flash-lite-image",
+    "product_name": "Nano Banana 2 Lite",
+    "aspect_ratio": "16:9",
+    "image_size": "1K",
+    "mime_type": "image/jpeg",
+    "timeout_ms": 45000,
+    "apply_only_to_current_scene": true
+  },
   "delivery": {
     "fullscreen": true,
     "fullscreen_keyboard_shortcut": "f",
@@ -85,6 +96,7 @@
   },
   "security": {
     "realtime_requests_per_window": 8,
+    "imagery_requests_per_window": 40,
     "share_tokens_per_window": 12,
     "rate_limit_window_ms": 600000
   }

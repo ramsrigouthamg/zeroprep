@@ -155,6 +155,8 @@ type Scene = {
   metricLabel?: string;
   quote?: string;
   attribution?: string;
+  backgroundImage?: string;
+  backgroundStatus?: "generating" | "ready" | "unavailable";
 };
 
 type ConnectionState = "ready" | "connecting" | "live" | "error";
@@ -640,8 +642,18 @@ function SceneCanvas({
 
   return (
     <article
-      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} ${reactive ? "is-reactive" : ""}`}
+      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} ${reactive ? "is-reactive" : ""} ${scene.backgroundImage ? "has-generated-background" : ""}`}
     >
+      {scene.backgroundImage && (
+        <>
+          <div
+            className="scene-background"
+            style={{ backgroundImage: `url("${scene.backgroundImage}")` }}
+            aria-hidden="true"
+          />
+          <div className="scene-background-wash" aria-hidden="true" />
+        </>
+      )}
       <div className="scene-noise" />
       <div className="scene-orbit scene-orbit-one" />
       <div className="scene-orbit scene-orbit-two" />
@@ -810,6 +822,9 @@ export default function Home() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const handledCalls = useRef(new Set<string>());
   const intentionalCloseRef = useRef(false);
+  const imageryAbortRef = useRef<AbortController | null>(null);
+  const imageryUnavailableRef = useRef(false);
+  const imageryUrlsRef = useRef(new Set<string>());
 
   useEffect(() => {
     sceneRef.current = scene;
@@ -825,29 +840,121 @@ export default function Home() {
 
   const stageScene = useCallback((next: Scene, deckMutation: DeckMutation = "append") => {
     if (transitionTimer.current) clearTimeout(transitionTimer.current);
+    imageryAbortRef.current?.abort();
+    imageryAbortRef.current = null;
+
+    const canGenerateImagery =
+      v7.imagery.enabled &&
+      !imageryUnavailableRef.current &&
+      deckMutation !== "view" &&
+      next.kind !== "cover" &&
+      next.kind !== "blank";
+    const stagedNext: Scene = canGenerateImagery
+      ? {
+          ...next,
+          backgroundImage: deckMutation === "update" ? next.backgroundImage : undefined,
+          backgroundStatus: "generating",
+        }
+      : next;
     const outgoing = sceneRef.current;
-    setPreviousScene(outgoing.id === next.id ? { ...outgoing, id: `${outgoing.id}-out` } : outgoing);
-    setScene(next);
-    sceneRef.current = next;
+    setPreviousScene(
+      outgoing.id === stagedNext.id
+        ? { ...outgoing, id: `${outgoing.id}-out` }
+        : outgoing,
+    );
+    setScene(stagedNext);
+    sceneRef.current = stagedNext;
     setHistory((items) =>
-      [...items.filter((item) => item.id !== next.id), next].slice(
+      [...items.filter((item) => item.id !== stagedNext.id), stagedNext].slice(
         -v7.presentation.recent_scene_limit,
       ),
     );
-    if (next.kind !== "blank" && next.kind !== "cover" && deckMutation !== "view") {
+    if (
+      stagedNext.kind !== "blank" &&
+      stagedNext.kind !== "cover" &&
+      deckMutation !== "view"
+    ) {
       setPresentationShare(null);
       setQrCodeDataUrl("");
       setIsShareOpen(false);
       setShareCopied(false);
       setDeckScenes((items) => {
         if (deckMutation === "update" && items.length) {
-          return [...items.slice(0, -1), next];
+          return [...items.slice(0, -1), stagedNext];
         }
-        return [...items, next];
+        return [...items, stagedNext];
       });
       setDeliveryMessage("Presentation is building — stop when you are ready to export");
     }
     transitionTimer.current = setTimeout(() => setPreviousScene(null), 820);
+
+    if (!canGenerateImagery) return;
+
+    const controller = new AbortController();
+    imageryAbortRef.current = controller;
+    const requestedSceneId = stagedNext.id;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/imagery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sceneId: requestedSceneId,
+            kind: stagedNext.kind,
+            eyebrow: stagedNext.eyebrow,
+            title: stagedNext.title,
+            subtitle: stagedNext.subtitle,
+            metric: stagedNext.metric,
+            metricLabel: stagedNext.metricLabel,
+            quote: stagedNext.quote,
+            cards: stagedNext.cards,
+            accent: stagedNext.accent,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 503) imageryUnavailableRef.current = true;
+          throw new Error("Scene imagery was unavailable.");
+        }
+
+        const imageBlob = await response.blob();
+        if (controller.signal.aborted || sceneRef.current.id !== requestedSceneId) return;
+
+        const imageUrl = URL.createObjectURL(imageBlob);
+        imageryUrlsRef.current.add(imageUrl);
+        const enrichedScene: Scene = {
+          ...sceneRef.current,
+          backgroundImage: imageUrl,
+          backgroundStatus: "ready",
+        };
+        setScene(enrichedScene);
+        sceneRef.current = enrichedScene;
+        setHistory((items) =>
+          items.map((item) => (item.id === requestedSceneId ? enrichedScene : item)),
+        );
+        setDeckScenes((items) =>
+          items.map((item) => (item.id === requestedSceneId ? enrichedScene : item)),
+        );
+      } catch {
+        if (controller.signal.aborted || sceneRef.current.id !== requestedSceneId) return;
+        const unavailableScene: Scene = {
+          ...sceneRef.current,
+          backgroundStatus: "unavailable",
+        };
+        setScene(unavailableScene);
+        sceneRef.current = unavailableScene;
+        setHistory((items) =>
+          items.map((item) => (item.id === requestedSceneId ? unavailableScene : item)),
+        );
+        setDeckScenes((items) =>
+          items.map((item) => (item.id === requestedSceneId ? unavailableScene : item)),
+        );
+      } finally {
+        if (imageryAbortRef.current === controller) imageryAbortRef.current = null;
+      }
+    })();
   }, []);
 
   const stopDemo = useCallback(() => {
@@ -1298,9 +1405,13 @@ export default function Home() {
   }, [deckScenes, runDemo, stageScene, toggleFullscreen]);
 
   useEffect(() => {
+    const imageryUrls = imageryUrlsRef.current;
     return () => {
       stopDemo();
       stopLive();
+      imageryAbortRef.current?.abort();
+      imageryUrls.forEach((url) => URL.revokeObjectURL(url));
+      imageryUrls.clear();
       if (transitionTimer.current) clearTimeout(transitionTimer.current);
     };
   }, [stopDemo, stopLive]);
@@ -1388,7 +1499,13 @@ export default function Home() {
                     ? "BLANK / AWAITING SPEECH"
                     : `${scene.kind.toUpperCase()} COMPOSITION`}
               </span>
-              <span>16:9 / LIVE</span>
+              <span>
+                16:9 / {scene.backgroundStatus === "generating"
+                  ? "IMAGERY RENDERING"
+                  : scene.backgroundImage
+                    ? "GEMINI IMAGE LIVE"
+                    : "LIVE"}
+              </span>
             </div>
             <div className="stage-canvas" aria-live="polite">
               {previousScene && <SceneCanvas scene={previousScene} phase="exiting" />}

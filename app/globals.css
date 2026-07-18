@@ -369,9 +369,81 @@ kbd {
   animation: sceneExit 760ms cubic-bezier(0.55, 0, 0.8, 0.35) both;
 }
 
+.scene-background,
+.scene-background-wash {
+  position: absolute;
+  pointer-events: none;
+}
+
+.scene-background {
+  z-index: 3;
+  top: 7%;
+  right: 4.5%;
+  bottom: 7%;
+  width: 40%;
+  overflow: hidden;
+  border: 1px solid rgba(17, 17, 15, 0.32);
+  border-top: clamp(3px, 0.45vw, 7px) solid var(--accent);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 24px 60px rgba(17, 17, 15, 0.18),
+    14px 14px 0 color-mix(in srgb, var(--accent) 56%, transparent);
+  filter: saturate(1.04) contrast(1.04);
+  animation: generatedImageDockIn 980ms cubic-bezier(0.16, 0.9, 0.22, 1) both;
+}
+
+.scene-background::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(0deg, rgba(17, 17, 15, 0.12), transparent 28%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  content: "";
+}
+
+.scene-background-wash {
+  z-index: 4;
+  top: 4%;
+  right: 42%;
+  bottom: 4%;
+  width: 10%;
+  background: linear-gradient(90deg, #e9e7df 8%, rgba(233, 231, 223, 0.78) 42%, transparent 100%);
+  animation: generatedPanelBlendIn 920ms ease both;
+}
+
+.scene-cards .scene-background {
+  top: 8%;
+  right: 5%;
+  bottom: auto;
+  width: 36%;
+  height: 34%;
+  background-position: center;
+  box-shadow:
+    0 18px 42px rgba(17, 17, 15, 0.16),
+    10px 10px 0 color-mix(in srgb, var(--accent) 52%, transparent);
+}
+
+.scene-cards .scene-background-wash {
+  top: 5%;
+  right: 39%;
+  bottom: auto;
+  width: 9%;
+  height: 40%;
+}
+
+.scene-quote .scene-background {
+  width: 37%;
+}
+
+.scene-quote .scene-background-wash {
+  right: 39%;
+}
+
 .scene-noise {
   position: absolute;
-  z-index: -1;
+  z-index: 2;
   inset: 0;
   opacity: 0.18;
   background-image:
@@ -381,7 +453,7 @@ kbd {
 
 .scene-orbit {
   position: absolute;
-  z-index: -1;
+  z-index: 2;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: 50%;
   pointer-events: none;
@@ -404,7 +476,7 @@ kbd {
 
 .live-sweep {
   position: absolute;
-  z-index: 0;
+  z-index: 4;
   top: -10%;
   bottom: -10%;
   left: -34%;
@@ -434,9 +506,16 @@ kbd {
 
 .scene-content {
   position: relative;
-  z-index: 1;
+  z-index: 5;
   height: 100%;
   padding: clamp(28px, 5vw, 64px) clamp(28px, 5.3vw, 74px) clamp(36px, 5vw, 62px);
+  transition: padding 920ms cubic-bezier(0.16, 0.9, 0.22, 1);
+}
+
+.scene-hero.has-generated-background .scene-content,
+.scene-metric.has-generated-background .scene-content,
+.scene-quote.has-generated-background .scene-content {
+  padding-right: 48%;
 }
 
 .scene-eyebrow {
@@ -465,6 +544,7 @@ kbd {
   height: calc(100% - 18px);
   align-items: end;
   gap: 7%;
+  transition: gap 920ms cubic-bezier(0.16, 0.9, 0.22, 1);
 }
 
 .hero-layout h1 {
@@ -475,6 +555,7 @@ kbd {
   letter-spacing: -0.075em;
   line-height: 0.84;
   white-space: pre-line;
+  transition: font-size 920ms cubic-bezier(0.16, 0.9, 0.22, 1);
 }
 
 .hero-layout h1::first-line {
@@ -485,6 +566,37 @@ kbd {
   align-self: center;
   padding-top: 24px;
   border-top: 1px solid rgba(17, 17, 15, 0.28);
+}
+
+.scene-hero.has-generated-background .hero-layout {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: end;
+  gap: clamp(10px, 1.5vw, 20px);
+}
+
+.scene-hero.has-generated-background .hero-layout h1 {
+  max-width: 100%;
+  font-size: clamp(28px, 3.7vw, 58px);
+}
+
+.scene-hero.has-generated-background .hero-aside {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(10px, 1.2vw, 18px);
+  padding-top: clamp(9px, 1vw, 14px);
+  background: transparent;
+}
+
+.scene-hero.has-generated-background .hero-icon-halo {
+  width: clamp(32px, 3.8vw, 54px);
+  margin: 0;
+}
+
+.scene-hero.has-generated-background .hero-index {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 30px);
 }
 
 .hero-icon-halo {
@@ -539,6 +651,42 @@ kbd {
   grid-template-columns: 1.5fr 0.7fr;
   align-items: end;
   gap: 10%;
+  transition: max-width 920ms cubic-bezier(0.16, 0.9, 0.22, 1);
+}
+
+.scene-cards.has-generated-background .scene-heading {
+  display: flex;
+  max-width: 54%;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: clamp(6px, 0.8vw, 10px);
+}
+
+.scene-cards.has-generated-background .scene-heading h2 {
+  font-size: clamp(22px, 3vw, 48px);
+}
+
+.scene-cards.has-generated-background .cards-layout {
+  height: calc(100% - 10px);
+  gap: clamp(8px, 1.25vw, 17px);
+}
+
+.scene-cards.has-generated-background .idea-card {
+  min-height: clamp(88px, 12vw, 155px);
+  padding: clamp(10px, 1.35vw, 19px);
+}
+
+.scene-cards.has-generated-background .idea-card h3 {
+  margin: clamp(12px, 1.55vw, 23px) 0 6px;
+  font-size: clamp(14px, 1.75vw, 28px);
+}
+
+.scene-cards.has-generated-background .idea-card p {
+  font-size: clamp(6px, 0.7vw, 10px);
+}
+
+.scene-cards.has-generated-background .scene-heading p {
+  font-size: clamp(7px, 0.8vw, 12px);
 }
 
 .scene-heading h2,
@@ -682,6 +830,32 @@ kbd {
   height: calc(100% - 18px);
   align-items: center;
   gap: 9%;
+  transition: gap 920ms cubic-bezier(0.16, 0.9, 0.22, 1);
+}
+
+.scene-metric.has-generated-background .metric-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: clamp(12px, 2vw, 28px);
+}
+
+.scene-metric.has-generated-background .metric-copy h2 {
+  font-size: clamp(26px, 3.7vw, 58px);
+}
+
+.scene-metric.has-generated-background .metric-visual {
+  justify-content: start;
+}
+
+.scene-metric.has-generated-background .metric-ring {
+  width: min(15vw, 200px);
+  min-width: 125px;
+  border-width: clamp(8px, 1.15vw, 16px);
+}
+
+.scene-metric.has-generated-background .metric-value {
+  font-size: clamp(36px, 4.6vw, 68px);
 }
 
 .metric-copy h2 {
@@ -765,6 +939,11 @@ kbd {
   height: calc(100% - 18px);
   flex-direction: column;
   justify-content: center;
+}
+
+.scene-quote.has-generated-background .quote-layout blockquote {
+  max-width: 100%;
+  font-size: clamp(28px, 4vw, 62px);
 }
 
 .quote-mark {
@@ -1242,6 +1421,12 @@ kbd {
   padding: 64px 74px 62px;
 }
 
+.export-slide .scene-hero.has-generated-background .scene-content,
+.export-slide .scene-metric.has-generated-background .scene-content,
+.export-slide .scene-quote.has-generated-background .scene-content {
+  padding-right: 760px;
+}
+
 .export-slide .scene-eyebrow {
   font-size: 8px;
 }
@@ -1252,6 +1437,10 @@ kbd {
 
 .export-slide .hero-layout h1 {
   font-size: 112px;
+}
+
+.export-slide .scene-hero.has-generated-background .hero-layout h1 {
+  font-size: 78px;
 }
 
 .export-slide .hero-icon-halo {
@@ -1274,6 +1463,10 @@ kbd {
   font-size: 66px;
 }
 
+.export-slide .scene-cards.has-generated-background .scene-heading h2 {
+  font-size: 54px;
+}
+
 .export-slide .card-grid {
   gap: 16px;
 }
@@ -1281,6 +1474,20 @@ kbd {
 .export-slide .idea-card {
   min-height: 215px;
   padding: 24px;
+}
+
+.export-slide .scene-cards.has-generated-background .idea-card {
+  min-height: 205px;
+  padding: 22px;
+}
+
+.export-slide .scene-cards.has-generated-background .idea-card h3 {
+  margin: 32px 0 8px;
+  font-size: 31px;
+}
+
+.export-slide .scene-cards.has-generated-background .idea-card p {
+  font-size: 11px;
 }
 
 .export-slide .card-icon-chip {
@@ -1302,12 +1509,22 @@ kbd {
   border-width: 24px;
 }
 
+.export-slide .scene-metric.has-generated-background .metric-ring {
+  width: 240px;
+  min-width: 240px;
+  border-width: 16px;
+}
+
 .export-slide .metric-icon {
   width: 54px;
 }
 
 .export-slide .metric-value {
   font-size: 112px;
+}
+
+.export-slide .scene-metric.has-generated-background .metric-value {
+  font-size: 76px;
 }
 
 .export-slide .metric-unit {
@@ -1321,6 +1538,10 @@ kbd {
 
 .export-slide .quote-layout blockquote {
   font-size: 74px;
+}
+
+.export-slide .scene-quote.has-generated-background .quote-layout blockquote {
+  font-size: 62px;
 }
 
 .export-slide .quote-footer {
@@ -1743,6 +1964,24 @@ kbd {
     opacity: 0;
     transform: translate3d(-5%, 0, 0) scale(0.975);
   }
+}
+
+@keyframes generatedImageDockIn {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 0 100%);
+    transform: translate3d(34%, 0, 0) rotate(1.8deg) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translate3d(0, 0, 0) rotate(0) scale(1);
+  }
+}
+
+@keyframes generatedPanelBlendIn {
+  from { opacity: 0; transform: translateX(60%); }
+  to { opacity: 1; }
 }
 
 @keyframes cardRise {
