@@ -1,0 +1,71 @@
+{
+  "release": "V4",
+  "created_at": "2026-07-18",
+  "status": "active",
+  "inherits": "V3",
+  "brand": {
+    "config": "brand.json",
+    "identity_locked": true
+  },
+  "realtime": {
+    "model": "gpt-realtime-2.1",
+    "output_modalities": ["text"],
+    "max_output_tokens": 800,
+    "transcription_model": "gpt-realtime-whisper",
+    "noise_reduction": "far_field",
+    "turn_detection": {
+      "type": "server_vad",
+      "threshold": 0.3,
+      "prefix_padding_ms": 300,
+      "silence_duration_ms": 200,
+      "create_response": true,
+      "interrupt_response": false
+    },
+    "voice": "marin",
+    "tool_choice": "required"
+  },
+  "presentation": {
+    "initial_scene": "blank",
+    "initial_scene_number": 0,
+    "motion_beat_ms": 1600,
+    "recent_scene_limit": 5
+  },
+  "visuals": {
+    "iconography": {
+      "library": "lucide-react",
+      "version": "1.25.0",
+      "license": "ISC",
+      "enabled": true,
+      "default_icon": "sparkles",
+      "installed_catalog_size": 1748,
+      "director_vocabulary_size": 119,
+      "vocabulary_sha256": "1d5125e16e1bc1f69c5456deda8786420921b6e6b1bad992d3ec88a39cf75e21"
+    },
+    "diagram_connectors": true,
+    "animated_icon_halos": true
+  },
+  "delivery": {
+    "fullscreen": true,
+    "fullscreen_keyboard_shortcut": "f",
+    "export_after_stop": true,
+    "export_width_px": 1600,
+    "export_height_px": 900,
+    "pdf": {
+      "enabled": true,
+      "library": "jspdf",
+      "version": "4.2.1"
+    },
+    "pptx": {
+      "enabled": true,
+      "library": "pptxgenjs",
+      "version": "4.0.1",
+      "layout": "LAYOUT_WIDE"
+    },
+    "capture": {
+      "library": "html-to-image",
+      "version": "1.11.13",
+      "format": "jpeg",
+      "quality": 0.95
+    }
+  }
+}
