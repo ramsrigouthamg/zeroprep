@@ -1445,86 +1445,252 @@ kbd {
 }
 
 .microphone-picker {
+  position: relative;
+  overflow: hidden;
   margin-top: 12px;
-  padding: 10px 11px 9px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.3);
-  transition: border-color 180ms ease, background 180ms ease;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
+  border-radius: 12px;
+  background: #f8f7f1;
+  box-shadow: 0 12px 26px rgba(17, 17, 15, 0.11), 0 2px 0 rgba(17, 17, 15, 0.08);
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.microphone-picker::before {
+  position: absolute;
+  top: -74px;
+  right: -42px;
+  z-index: 0;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sky) 24%, transparent), transparent 66%);
+  content: "";
+  pointer-events: none;
 }
 
 .microphone-picker.is-live {
-  border-color: color-mix(in srgb, var(--lime) 72%, var(--line));
-  background: color-mix(in srgb, var(--lime) 7%, rgba(255, 255, 255, 0.32));
+  border-color: color-mix(in srgb, var(--lime) 74%, var(--ink));
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--lime) 22%, transparent), 0 2px 0 rgba(17, 17, 15, 0.08);
 }
 
 .microphone-picker-heading {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 7px;
+  gap: 10px;
+  min-height: 64px;
+  margin: 0;
+  padding: 11px 11px 11px 12px;
+  border-radius: 11px 11px 0 0;
+  background:
+    linear-gradient(118deg, #151512 0%, #1d1d19 68%, #303027 100%);
+  color: var(--paper);
+  isolation: isolate;
+}
+
+.microphone-picker-heading::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ember), var(--lime) 48%, var(--sky));
+  content: "";
+}
+
+.microphone-picker.is-live .microphone-picker-heading {
+  background: linear-gradient(118deg, #1b2114 0%, #243016 64%, #343d1e 100%);
+}
+
+.microphone-picker-heading-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.microphone-picker-icon {
+  display: grid;
+  width: 37px;
+  height: 37px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--lime);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+}
+
+.microphone-picker-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.25;
 }
 
 .microphone-picker-heading label,
-.microphone-picker-heading button,
-.microphone-picker > small {
-  color: var(--muted);
+.microphone-picker-heading-copy small,
+.microphone-detect,
+.microphone-picker-footer {
   font-family: var(--font-mono);
-  font-size: 6px;
   font-weight: 700;
   letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
-.microphone-picker-heading button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #55524d;
-  cursor: pointer;
+.microphone-picker-heading label {
+  display: block;
+  color: var(--paper);
+  font-size: 8px;
 }
 
-.microphone-picker-heading button:hover:not(:disabled) {
+.microphone-picker-heading-copy small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: rgba(241, 239, 232, 0.62);
+  font-size: 5.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.microphone-picker-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.microphone-signal {
+  display: flex;
+  height: 18px;
+  align-items: center;
+  gap: 2px;
+}
+
+.microphone-signal i {
+  display: block;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(201, 244, 82, 0.46);
+  transform-origin: center;
+}
+
+.microphone-signal i:nth-child(1),
+.microphone-signal i:nth-child(5) {
+  height: 5px;
+}
+
+.microphone-signal i:nth-child(2),
+.microphone-signal i:nth-child(4) {
+  height: 11px;
+}
+
+.microphone-signal i:nth-child(3) {
+  height: 17px;
+  background: var(--lime);
+}
+
+.microphone-picker.is-live .microphone-signal i,
+.microphone-picker.is-detecting .microphone-signal i {
+  animation: microphoneSignal 720ms ease-in-out infinite alternate;
+}
+
+.microphone-picker.is-live .microphone-signal i:nth-child(2),
+.microphone-picker.is-detecting .microphone-signal i:nth-child(4) {
+  animation-delay: -160ms;
+}
+
+.microphone-picker.is-live .microphone-signal i:nth-child(3),
+.microphone-picker.is-detecting .microphone-signal i:nth-child(1) {
+  animation-delay: -300ms;
+}
+
+.microphone-detect {
+  display: inline-flex;
+  min-height: 29px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: var(--lime);
   color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  cursor: pointer;
+  font-size: 5.5px;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 
-.microphone-picker-heading button:disabled {
+.microphone-detect:hover:not(:disabled) {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.microphone-detect:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
 .microphone-select-shell {
   position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 12px;
-  min-height: 36px;
+  grid-template-columns: 39px minmax(0, 1fr) 34px;
+  min-height: 50px;
+  margin: 11px 11px 0;
   align-items: center;
-  border: 1px solid rgba(17, 17, 15, 0.3);
-  border-radius: 2px;
-  background: rgba(241, 239, 232, 0.82);
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 9px;
+  background: #fffefa;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 3px 0 rgba(17, 17, 15, 0.06);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.microphone-select-shell > svg {
-  width: 13px;
-  height: 13px;
-  justify-self: center;
-  stroke-width: 1.8;
+.microphone-select-shell:hover {
+  border-color: color-mix(in srgb, var(--ink) 54%, transparent);
+}
+
+.microphone-select-shell:focus-within {
+  border-color: var(--sky);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sky) 35%, transparent);
+}
+
+.microphone-select-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  place-items: center;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sky) 32%, white);
+  color: #0e5873;
+}
+
+.microphone-select-icon svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
 }
 
 .microphone-select-shell select {
   width: 100%;
   min-width: 0;
-  height: 34px;
-  padding: 0 5px;
+  height: 48px;
+  padding: 0 7px;
   appearance: none;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--ink);
   cursor: pointer;
-  font-size: 9px;
-  font-weight: 750;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   text-overflow: ellipsis;
 }
 
@@ -1533,18 +1699,74 @@ kbd {
   opacity: 0.7;
 }
 
-.microphone-select-shell > span {
+.microphone-select-chevron {
+  width: 16px;
+  height: 16px;
+  justify-self: center;
   color: var(--muted);
-  font-size: 12px;
-  transform: translateY(-1px);
+  stroke-width: 2.2;
+  transition: color 180ms ease, transform 180ms ease;
 }
 
-.microphone-picker > small {
-  display: block;
+.microphone-select-shell:hover .microphone-select-chevron {
+  color: var(--ink);
+  transform: translateY(1px);
+}
+
+.microphone-picker-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 33px;
+  margin: 0;
+  padding: 9px 11px 10px;
+  color: var(--muted);
+  font-size: 5px;
+}
+
+.microphone-input-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #5f5c56;
+}
+
+.microphone-input-status i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid #b0aea5;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.microphone-input-status.is-live {
+  color: #466e10;
+}
+
+.microphone-input-status.is-live i {
+  border-color: #5b8b15;
+  background: var(--lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 36%, transparent);
+}
+
+.microphone-picker-footer small {
   overflow: hidden;
-  margin-top: 7px;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@keyframes microphoneSignal {
+  from { transform: scaleY(0.55); opacity: 0.45; }
+  to { transform: scaleY(1); opacity: 1; }
 }
 
 .mic-button {

@@ -17,6 +17,7 @@ import {
   Building2,
   CalendarDays,
   Camera,
+  ChevronDown,
   ChartNoAxesColumnIncreasing,
   ChartPie,
   CircuitBoard,
@@ -65,6 +66,7 @@ import {
   Megaphone,
   Medal,
   MessageSquare,
+  Mic,
   Microscope,
   Minimize2,
   Monitor,
@@ -1636,23 +1638,39 @@ export default function Home() {
             </div>
           </div>
 
-          <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
+          <div
+            className={`microphone-picker ${connection === "live" ? "is-live" : ""} ${
+              isDetectingMicrophones ? "is-detecting" : ""
+            }`}
+          >
             <div className="microphone-picker-heading">
-              <label htmlFor="microphone-input">MICROPHONE INPUT</label>
-              <button
-                type="button"
-                onClick={() => void detectMicrophones()}
-                disabled={
-                  connection === "live" ||
-                  connection === "connecting" ||
-                  isDetectingMicrophones
-                }
-              >
-                {isDetectingMicrophones ? "DETECTING…" : "DETECT"}
-              </button>
+              <div className="microphone-picker-heading-copy">
+                <span className="microphone-picker-icon" aria-hidden="true"><Mic /></span>
+                <span>
+                  <label htmlFor="microphone-input">VOICE SOURCE</label>
+                  <small>Choose the microphone you want to use</small>
+                </span>
+              </div>
+              <div className="microphone-picker-actions">
+                <span className="microphone-signal" aria-hidden="true">
+                  <i /><i /><i /><i /><i />
+                </span>
+                <button
+                  className="microphone-detect"
+                  type="button"
+                  onClick={() => void detectMicrophones()}
+                  disabled={
+                    connection === "live" ||
+                    connection === "connecting" ||
+                    isDetectingMicrophones
+                  }
+                >
+                  {isDetectingMicrophones ? "DETECTING…" : "DETECT"}
+                </button>
+              </div>
             </div>
             <div className="microphone-select-shell">
-              <Headphones aria-hidden="true" />
+              <span className="microphone-select-icon" aria-hidden="true"><Mic /></span>
               <select
                 id="microphone-input"
                 value={selectedMicrophoneId}
@@ -1674,9 +1692,21 @@ export default function Home() {
                   </option>
                 ))}
               </select>
-              <span aria-hidden="true">⌄</span>
+              <ChevronDown className="microphone-select-chevron" aria-hidden="true" />
             </div>
-            <small id="microphone-help">{microphoneHelp}</small>
+            <div className="microphone-picker-footer">
+              <span className={`microphone-input-status ${connection === "live" ? "is-live" : ""}`}>
+                <i aria-hidden="true" />
+                {connection === "live"
+                  ? "Live input"
+                  : isDetectingMicrophones
+                    ? "Checking devices"
+                    : microphones.length > 0
+                      ? "Input ready"
+                      : "Awaiting input"}
+              </span>
+              <small id="microphone-help">{microphoneHelp}</small>
+            </div>
           </div>
 
           {connection === "live" ? (
