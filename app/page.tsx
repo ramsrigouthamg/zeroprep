@@ -1023,12 +1023,16 @@ export default function Home() {
     stopDemo();
     setError("");
     setIsDemoRunning(true);
+    const demoRunId = Date.now();
     DEMO_BEATS.forEach((beat, index) => {
       const timer = setTimeout(() => {
         setTranscript(beat.transcript);
         setPartialTranscript("");
         setDirectorStatus("Demo scene composed");
-        stageScene(beat.scene, "append");
+        stageScene(
+          { ...beat.scene, id: `demo-${demoRunId}-${index}-${beat.scene.id}` },
+          "append",
+        );
         if (index === DEMO_BEATS.length - 1) setIsDemoRunning(false);
       }, index * 2850 + 220);
       demoTimers.current.push(timer);
@@ -1390,7 +1394,9 @@ export default function Home() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
-      if (event.key.toLowerCase() === "d") runDemo();
+      if (event.key.toLowerCase() === "d" && connection !== "live" && connection !== "connecting") {
+        runDemo();
+      }
       if (event.key.toLowerCase() === "f") {
         event.preventDefault();
         void toggleFullscreen();
@@ -1412,7 +1418,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [deckScenes, runDemo, stageScene, toggleFullscreen]);
+  }, [connection, deckScenes, runDemo, stageScene, toggleFullscreen]);
 
   useEffect(() => {
     const imageryUrls = imageryUrlsRef.current;
@@ -1481,7 +1487,7 @@ export default function Home() {
         </a>
         <div className="header-center">
           <span className={`status-dot status-${connection}`} />
-          {statusLabel}
+          <span role="status" aria-live="polite">{statusLabel}</span>
           <span className="header-divider" />
           GPT-REALTIME-2.1 / {v7.release}
         </div>
@@ -1530,7 +1536,11 @@ export default function Home() {
                     : "LIVE"}
               </span>
             </div>
-            <div className="stage-canvas" aria-live="polite">
+            <div
+              className="stage-canvas"
+              aria-busy={scene.backgroundStatus === "generating"}
+              aria-label={`Presentation scene ${stageSceneNumber}: ${scene.title.replace(/\n/g, " ")}`}
+            >
               {previousScene && <SceneCanvas scene={previousScene} phase="exiting" />}
               <SceneCanvas
                 key={scene.id}
@@ -1709,59 +1719,83 @@ export default function Home() {
             </div>
           </div>
 
-          {connection === "live" ? (
+          <div className="session-actions" aria-label="Presentation controls">
+            {connection === "live" ? (
+              <button
+                className="mic-button stop-button"
+                type="button"
+                onClick={stopLive}
+                aria-label="Stop presentation and end continuous listening"
+              >
+                <span className="stop-icon" aria-hidden="true"><i /></span>
+                <span>
+                  <strong>Stop presentation</strong>
+                  <small>End continuous listening</small>
+                </span>
+                <span className="mic-arrow">■</span>
+              </button>
+            ) : (
+              <button
+                className="mic-button"
+                type="button"
+                onClick={() => void startLive()}
+                disabled={connection === "connecting"}
+                aria-label="Start presentation and listen continuously"
+              >
+                <span className="mic-icon" aria-hidden="true"><i /></span>
+                <span>
+                  <strong>
+                    {connection === "connecting"
+                      ? "Starting presentation…"
+                      : "Start live presentation"}
+                  </strong>
+                  <small>Listens continuously until stopped</small>
+                </span>
+                <span className="mic-arrow">↗</span>
+              </button>
+            )}
             <button
-              className="mic-button stop-button"
+              className="demo-button"
               type="button"
-              onClick={stopLive}
-              aria-label="Stop presentation and end continuous listening"
+              onClick={runDemo}
+              disabled={connection === "live" || connection === "connecting" || isDemoRunning}
+              aria-label={isDemoRunning ? "Sample presentation is playing" : "Watch a sample presentation"}
             >
-              <span className="stop-icon" aria-hidden="true"><i /></span>
-              <span>
-                <strong>Stop presentation</strong>
-                <small>End continuous listening</small>
+              <span className="demo-button-icon" aria-hidden="true"><Sparkles /></span>
+              <span className="demo-button-copy">
+                <strong>{isDemoRunning ? "Sample is playing…" : "Watch a sample"}</strong>
+                <small>Preview the visual flow before you start</small>
               </span>
-              <span className="mic-arrow">■</span>
+              <span className="demo-button-action" aria-hidden="true">Play</span>
             </button>
-          ) : (
-            <button
-              className="mic-button"
-              type="button"
-              onClick={() => void startLive()}
-              disabled={connection === "connecting"}
-              aria-label="Start presentation and listen continuously"
-            >
-              <span className="mic-icon" aria-hidden="true"><i /></span>
-              <span>
-                <strong>
-                  {connection === "connecting"
-                    ? "Starting presentation…"
-                    : "Start live presentation"}
-                </strong>
-                <small>Listens continuously until stopped</small>
-              </span>
-              <span className="mic-arrow">↗</span>
-            </button>
-          )}
-
-          <div className="director-rule">
-            <span />
-            <small>OR SIMULATE A LINE</small>
-            <span />
           </div>
 
-          <form className="line-form" onSubmit={submitLine}>
-            <label htmlFor="spoken-line">What are you saying next?</label>
-            <div>
-              <input
-                id="spoken-line"
-                value={draftLine}
-                onChange={(event) => setDraftLine(event.target.value)}
-                placeholder="We have three priorities…"
-              />
-              <button type="submit" aria-label="Stage this line">→</button>
+          <section className="manual-compose" aria-labelledby="manual-compose-heading">
+            <div className="director-rule">
+              <span />
+              <small>OR COMPOSE A SCENE</small>
+              <span />
             </div>
-          </form>
+
+            <form className="line-form" onSubmit={submitLine}>
+              <div className="line-form-heading">
+                <label id="manual-compose-heading" htmlFor="spoken-line">What are you saying next?</label>
+                <small>Press Enter to compose</small>
+              </div>
+              <div>
+                <input
+                  id="spoken-line"
+                  value={draftLine}
+                  onChange={(event) => setDraftLine(event.target.value)}
+                  placeholder="We have three priorities…"
+                />
+                <button type="submit">
+                  <span>Compose</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+            </form>
+          </section>
 
           {error && (
             <div className="error-note" role="alert">
