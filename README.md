@@ -16,7 +16,8 @@ ZeroPrep listens while you speak and composes a live visual presentation around 
 
 - Listens continuously until the presenter stops the session
 - Lets the presenter choose from available microphone inputs
-- Uses GPT-Realtime 2.1 to understand live speech and direct visual changes
+- Uses GPT-Realtime 2.1 by default to understand live speech and direct visual changes
+- Lets the presenter switch to GPT-Realtime 2.1 Mini for faster, lower-cost sessions
 - Generates scene-aware background imagery asynchronously with Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)
 - Renders animated presentation scenes with React, HTML, and CSS
 - Builds heroes, cards, metrics, quotes, icons, and diagrams dynamically
@@ -43,7 +44,7 @@ OpenAI and Gemini credentials remain server-side. Exported presentations are gen
 ## Technology
 
 - Next.js 16 and React 19
-- OpenAI `gpt-realtime-2.1`
+- OpenAI `gpt-realtime-2.1` by default, with `gpt-realtime-2.1-mini` selectable
 - OpenAI `gpt-realtime-whisper` for the displayed live transcript
 - Google Gemini `gemini-3.1-flash-lite-image` for non-blocking generated backgrounds
 - jsPDF and html-to-image for PDF generation

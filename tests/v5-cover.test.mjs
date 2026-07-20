@@ -35,8 +35,8 @@ test("V5 opens on the ZeroPrep cover and replaces it on first speech", async () 
   assert.equal(packageJson.name, "zeroprep-live-presentations");
   assert.match(pageSource, /kind:\s*"cover"/);
   assert.match(pageSource, /scene\.kind === "cover"/);
-  assert.match(pageSource, /next\.kind !== "cover"/);
-  assert.match(pageSource, /GPT-REALTIME-2\.1 \/ \{v\d\.release\}/);
+  assert.match(pageSource, /numberedNext\.kind !== "cover"/);
+  assert.match(pageSource, /selectedRealtimeModelOption\.shortLabel/);
   assert.match(routeSource, /starts on the ZeroPrep welcome cover/);
   assert.match(routeSource, /turn_detection:\s*v\d\.realtime\.turn_detection/);
   assert.match(cssSource, /\.scene-cover/);

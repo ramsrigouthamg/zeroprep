@@ -1,6 +1,7 @@
 import brand from "../../../config/brand.json";
 import v7 from "../../../config/v7.json";
 import { ICON_NAMES } from "../../../lib/iconography";
+import { DEFAULT_REALTIME_MODEL, isRealtimeModel } from "../../../lib/realtime-models";
 import { checkRateLimit, rateLimitResponse } from "../../../lib/request-guards";
 
 const DIRECTOR_INSTRUCTIONS = `
@@ -15,7 +16,7 @@ Decision policy:
 - COMPOSE: Use replace for a new topic, conclusion, contrast, memorable quote, important metric, or clear new beat.
 - Recompose the stage after two or three substantive turns even when the topic continues. Change the visual grammar as the story develops instead of leaving one composition on screen too long.
 - If the speaker introduces two to four related points, compose one cards scene and progressively merge cards into it. Do not create one scene per point.
-- Keep on-screen copy concise. Titles should usually be 3–8 words; card bodies one sentence at most.
+- Keep on-screen copy concise and presentation-sized: eyebrows at most 6 words, titles 3–8 words, subtitles at most 22 words, card titles 2–5 words, card bodies 8–20 words, metric labels at most 6 words, and quotes at most 28 words. Put extra detail in later updates instead of shrinking the typography.
 - Use hero for a strong new thesis, cards for 2–4 sibling ideas, metric for a number that deserves focus, and quote for a memorable line.
 - Every nonblank scene must choose one semantic icon that reinforces its main idea. The icon vocabulary spans business, technology, healthcare, education, science, finance, climate, travel, media, community, retail, and operations. For cards, choose a distinct relevant icon for every card. Prefer meaning over decoration and avoid repeating sparkles when a more specific icon fits.
 - Treat cards as a mini visual system: order related ideas clearly so the UI can connect them as a diagram.
@@ -48,19 +49,19 @@ const STAGE_TOOL = {
         additionalProperties: false,
         properties: {
           kind: { type: "string", enum: ["hero", "cards", "metric", "quote"] },
-          eyebrow: { type: "string" },
-          title: { type: "string" },
-          subtitle: { type: "string" },
+          eyebrow: { type: "string", description: "Short section label, no more than 6 words." },
+          title: { type: "string", description: "Presentation headline, usually 3–8 words." },
+          subtitle: { type: "string", description: "One supporting sentence, no more than 22 words." },
           icon: {
             type: "string",
             enum: ICON_NAMES,
             description: "Semantic icon that best represents the scene's central idea.",
           },
           accent: { type: "string", enum: ["ember", "lime", "sky", "violet"] },
-          metric: { type: "string" },
-          metricLabel: { type: "string" },
-          quote: { type: "string" },
-          attribution: { type: "string" },
+          metric: { type: "string", description: "Compact display value only." },
+          metricLabel: { type: "string", description: "Short metric label, no more than 6 words." },
+          quote: { type: "string", description: "Memorable line, no more than 28 words." },
+          attribution: { type: "string", description: "Short source or speaker label." },
           cards: {
             type: "array",
             maxItems: 4,
@@ -69,8 +70,8 @@ const STAGE_TOOL = {
               additionalProperties: false,
               properties: {
                 tag: { type: "string" },
-                title: { type: "string" },
-                body: { type: "string" },
+                title: { type: "string", description: "Card headline, 2–5 words." },
+                body: { type: "string", description: "One concise supporting sentence, 8–20 words." },
                 icon: {
                   type: "string",
                   enum: ICON_NAMES,
@@ -90,8 +91,8 @@ const STAGE_TOOL = {
           additionalProperties: false,
           properties: {
             tag: { type: "string" },
-            title: { type: "string" },
-            body: { type: "string" },
+            title: { type: "string", description: "Card headline, 2–5 words." },
+            body: { type: "string", description: "One concise supporting sentence, 8–20 words." },
             icon: {
               type: "string",
               enum: ICON_NAMES,
@@ -116,6 +117,10 @@ export async function POST(request: Request) {
   if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
   const apiKey = process.env.OPENAI_API_KEY;
+  const requestedModel = request.headers.get("X-ZeroPrep-Realtime-Model");
+  const realtimeModel = isRealtimeModel(requestedModel)
+    ? requestedModel
+    : DEFAULT_REALTIME_MODEL;
 
   if (!apiKey) {
     return new Response(
@@ -131,7 +136,7 @@ export async function POST(request: Request) {
 
   const session = {
     type: "realtime",
-    model: v7.realtime.model,
+    model: realtimeModel,
     instructions: DIRECTOR_INSTRUCTIONS,
     output_modalities: v7.realtime.output_modalities,
     max_output_tokens: v7.realtime.max_output_tokens,
@@ -190,6 +195,7 @@ export async function POST(request: Request) {
       headers: {
         "Content-Type": "application/sdp",
         "Cache-Control": "no-store",
+        "X-ZeroPrep-Realtime-Model": realtimeModel,
       },
     });
   } catch {

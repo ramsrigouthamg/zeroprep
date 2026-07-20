@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accessibility,
@@ -17,7 +17,6 @@ import {
   Building2,
   CalendarDays,
   Camera,
-  ChevronDown,
   ChartNoAxesColumnIncreasing,
   ChartPie,
   CircuitBoard,
@@ -66,7 +65,6 @@ import {
   Megaphone,
   Medal,
   MessageSquare,
-  Mic,
   Microscope,
   Minimize2,
   Monitor,
@@ -131,6 +129,12 @@ import {
 import brand from "@/config/brand.json";
 import v7 from "@/config/v7.json";
 import type { IconName } from "@/lib/iconography";
+import {
+  DEFAULT_REALTIME_MODEL,
+  isRealtimeModel,
+  REALTIME_MODEL_OPTIONS,
+  type RealtimeModel,
+} from "@/lib/realtime-models";
 
 type SceneKind = "cover" | "blank" | "hero" | "cards" | "metric" | "quote";
 
@@ -143,6 +147,7 @@ type SceneCard = {
 
 type Scene = {
   id: string;
+  sequence?: number;
   kind: SceneKind;
   eyebrow: string;
   title: string;
@@ -155,7 +160,7 @@ type Scene = {
   quote?: string;
   attribution?: string;
   backgroundImage?: string;
-  backgroundStatus?: "generating" | "ready" | "unavailable";
+  backgroundStatus?: "generating" | "reframing" | "ready" | "unavailable";
 };
 
 type ConnectionState = "ready" | "connecting" | "live" | "error";
@@ -163,6 +168,8 @@ type DeckMutation = "append" | "update" | "view";
 type ExportFormat = "pdf" | "pptx";
 
 const MICROPHONE_STORAGE_KEY = "zeroprep.microphone-device-id";
+const REALTIME_MODEL_STORAGE_KEY = "zeroprep.realtime-model.v2";
+const IMAGE_REFLOW_DELAY_MS = 560;
 
 type DirectorCommand = {
   action?: "replace" | "merge_cards" | "focus" | "hold";
@@ -173,6 +180,7 @@ type DirectorCommand = {
 
 const INITIAL_SCENE: Scene = {
   id: "zeroprep-cover",
+  sequence: 0,
   kind: "cover",
   eyebrow: brand.display_name,
   title: brand.tagline,
@@ -392,18 +400,6 @@ const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
   },
 ];
 
-const ACCENTS: Scene["accent"][] = ["ember", "lime", "sky", "violet"];
-
-function titleCase(value: string) {
-  return value
-    .replace(/[^a-zA-Z0-9\s-]/g, " ")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 7)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
 const ICON_RULES: Array<[RegExp, IconName]> = [
   [/\b(?:hospital|doctor|nurse|patient|medical|healthcare|clinic)\b/, "stethoscope"],
   [/\b(?:medicine|medication|pharma|drug|tablet)\b/, "pill"],
@@ -471,86 +467,65 @@ function iconFromText(value: string): IconName {
   return ICON_RULES.find(([pattern]) => pattern.test(text))?.[1] || "sparkles";
 }
 
-function sceneFromLine(line: string, index: number): Scene {
-  const clean = line.trim();
-  const accent = ACCENTS[index % ACCENTS.length];
-  const metric = clean.match(/(?:^|\s)(<?\d[\d,.]*)(%|x|ms|k|m|b)?\b/i);
-  const enumeration = clean
-    .split(/\b(?:first|second|third|finally|next)\b[:,]?\s*/i)
-    .map((part) => part.replace(/^[,;:\s]+|[,;:\s]+$/g, ""))
-    .filter((part) => part.length > 8);
+function copyDensity(
+  value = "",
+  mediumWordCount = 7,
+  denseWordCount = 11,
+) {
+  const words = value.trim().split(/\s+/).filter(Boolean).length;
+  if (words >= denseWordCount || value.length >= denseWordCount * 9) return "dense";
+  if (words >= mediumWordCount || value.length >= mediumWordCount * 9) return "medium";
+  return "short";
+}
 
-  if (/\bthree\b/i.test(clean) || enumeration.length >= 3) {
-    const source =
-      enumeration.length >= 3
-        ? enumeration.slice(-3)
-        : clean
-            .replace(/^.*?\bthree\b\s*/i, "")
-            .split(/,|\band\b/i)
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .slice(0, 3);
-    const fallbacks = [
-      "The first idea takes shape.",
-      "The second idea adds context.",
-      "The third idea completes the story.",
-    ];
+function fitCopy(value: string | undefined, maxLength: number, fallback = "") {
+  const clean = (value || fallback)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (clean.length <= maxLength) return clean;
+  const clipped = clean.slice(0, maxLength + 1);
+  const lastWord = Math.max(clipped.lastIndexOf(" "), clipped.lastIndexOf("\n"));
+  return `${clipped.slice(0, lastWord > maxLength * 0.65 ? lastWord : maxLength).trim()}…`;
+}
 
-    return {
-      id: `local-cards-${Date.now()}`,
-      kind: "cards",
-      eyebrow: "THREE PARTS  /  ONE SCENE",
-      title: "A thought, composed as a system.",
-      subtitle: clean,
-      accent,
-      icon: "workflow",
-      cards: [0, 1, 2].map((cardIndex) => {
-        const body = source[cardIndex] || fallbacks[cardIndex];
-        return {
-          tag: `0${cardIndex + 1}`,
-          title: titleCase(body).split(" ").slice(0, 3).join(" "),
-          body,
-          icon: iconFromText(body),
-        };
-      }),
-    };
-  }
+function formatSequenceNumber(value: number) {
+  return String(Math.max(0, value)).padStart(2, "0");
+}
 
-  if (metric) {
-    return {
-      id: `local-metric-${Date.now()}`,
-      kind: "metric",
-      eyebrow: "SIGNAL DETECTED  /  KEY NUMBER",
-      title: titleCase(clean.replace(metric[0], "").trim()) || "The number that matters.",
-      subtitle: clean,
-      accent,
-      icon: iconFromText(clean),
-      metric: `${metric[1]}${metric[2] || ""}`,
-      metricLabel: "LIVE HIGHLIGHT",
-    };
-  }
-
-  if (/\b(?:quote|remember|believe)\b/i.test(clean)) {
-    return {
-      id: `local-quote-${Date.now()}`,
-      kind: "quote",
-      eyebrow: "KEY IDEA  /  HOLD THE ROOM",
-      title: "Let the thought breathe.",
-      quote: clean.replace(/^.*?\b(?:quote|remember|believe)\b[:,]?\s*/i, ""),
-      attribution: "LIVE TRANSCRIPT",
-      accent,
-      icon: "quote",
-    };
-  }
+function fitSceneToCanvas(scene: Scene): Scene {
+  if (scene.kind === "cover" || scene.kind === "blank") return scene;
+  const cardBodyLimit = (scene.cards?.length || 0) >= 4 ? 120 : 165;
+  const cards = scene.kind === "cards"
+    ? (scene.cards?.length
+        ? scene.cards.slice(0, 4)
+        : [{
+            title: scene.title || "Key idea",
+            body: scene.subtitle || "The speaker’s main point.",
+            icon: scene.icon || "sparkles",
+          }]
+      ).map((card, index) => ({
+        ...card,
+        tag: fitCopy(card.tag, 4, formatSequenceNumber(index + 1)),
+        title: fitCopy(card.title, 48, `Idea ${index + 1}`),
+        body: fitCopy(card.body, cardBodyLimit, "Supporting detail"),
+      }))
+    : scene.cards;
 
   return {
-    id: `local-hero-${Date.now()}`,
-    kind: "hero",
-    eyebrow: "LIVE THOUGHT  /  VISUALIZED",
-    title: titleCase(clean) || "A new idea takes the stage.",
-    subtitle: clean,
-    accent,
-    icon: iconFromText(clean),
+    ...scene,
+    eyebrow: fitCopy(scene.eyebrow, 48, "LIVE PRESENTATION"),
+    title: fitCopy(scene.title, 72, "A new idea takes the stage."),
+    subtitle: scene.subtitle ? fitCopy(scene.subtitle, 180) : undefined,
+    cards,
+    metric: scene.kind === "metric" ? fitCopy(scene.metric, 14, "—") : scene.metric,
+    metricLabel:
+      scene.kind === "metric" ? fitCopy(scene.metricLabel, 48, "KEY SIGNAL") : scene.metricLabel,
+    quote: scene.kind === "quote" ? fitCopy(scene.quote, 240, scene.title) : scene.quote,
+    attribution:
+      scene.kind === "quote" ? fitCopy(scene.attribution, 60, "LIVE TRANSCRIPT") : scene.attribution,
   };
 }
 
@@ -603,14 +578,12 @@ function Waveform({ active }: { active: boolean }) {
 
 function SceneCanvas({
   scene,
+  sceneNumber = scene.sequence ?? 0,
   phase,
-  reactive = false,
-  motionBeat = 0,
 }: {
   scene: Scene;
+  sceneNumber?: number;
   phase: "entering" | "exiting";
-  reactive?: boolean;
-  motionBeat?: number;
 }) {
   if (scene.kind === "cover") {
     return (
@@ -630,17 +603,34 @@ function SceneCanvas({
     );
   }
 
-  const activeCard = (scene.cards?.length || 1) > 0
-    ? motionBeat % (scene.cards?.length || 1)
-    : 0;
+  const cardCount = Math.min(Math.max(scene.cards?.length || 1, 1), 4);
+  const featuredCard = Math.max(sceneNumber - 1, 0) % cardCount;
+  const primaryCopy = scene.kind === "quote" ? scene.quote : scene.title;
+  const primaryDensity = copyDensity(
+    primaryCopy,
+    scene.kind === "quote" ? 12 : 7,
+    scene.kind === "quote" ? 20 : 11,
+  );
+  const supportDensity = copyDensity(scene.subtitle, 15, 24);
+  const metricLength = scene.metric?.length || 0;
+  const metricDensity = metricLength > 9 ? "dense" : metricLength > 6 ? "medium" : "short";
+  const usesImageLayout = Boolean(scene.backgroundImage) || scene.backgroundStatus === "reframing";
+  const imageryClass = scene.backgroundImage
+    ? "is-imagery-ready"
+    : scene.backgroundStatus === "reframing"
+      ? "is-imagery-reframing"
+      : scene.backgroundStatus === "generating"
+        ? "is-imagery-pending"
+        : "is-imagery-plain";
 
   return (
     <article
-      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} ${reactive ? "is-reactive" : ""} ${scene.backgroundImage ? "has-generated-background" : ""}`}
+      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} copy-${primaryDensity} support-${supportDensity} ${imageryClass} ${usesImageLayout ? "has-generated-background" : ""}`}
     >
       {scene.backgroundImage && (
         <>
           <div
+            key={scene.backgroundImage}
             className="scene-background"
             style={{ backgroundImage: `url("${scene.backgroundImage}")` }}
             aria-hidden="true"
@@ -651,11 +641,10 @@ function SceneCanvas({
       <div className="scene-noise" />
       <div className="scene-orbit scene-orbit-one" />
       <div className="scene-orbit scene-orbit-two" />
-      <div className="live-sweep" aria-hidden="true" />
       <div className="scene-content">
         <p className="scene-eyebrow">
           <span />
-          {scene.eyebrow}
+          <span className="scene-eyebrow-label">{scene.eyebrow}</span>
         </p>
 
         {scene.kind === "hero" && (
@@ -665,27 +654,28 @@ function SceneCanvas({
               <span className="hero-icon-halo">
                 <SemanticIcon name={scene.icon} className="hero-icon" />
               </span>
-              <span className="hero-index">{scene.id === "opening" ? "00" : "02"}</span>
-              <p>{scene.subtitle}</p>
+              {scene.subtitle && <p>{scene.subtitle}</p>}
             </div>
           </div>
         )}
 
         {scene.kind === "cards" && (
-          <div className="cards-layout">
+          <div className={`cards-layout cards-count-${cardCount}`}>
             <div className="scene-heading">
               <h2>{scene.title}</h2>
-              <p>{scene.subtitle}</p>
+              {scene.subtitle && <p>{scene.subtitle}</p>}
             </div>
-            <div className="card-grid">
+            <div className={`card-grid cards-count-${cardCount}`}>
               {(scene.cards || []).map((card, index) => (
                 <div
-                  className={`idea-card ${reactive && index === activeCard ? "is-live-focus" : ""}`}
-                  key={`${card.title}-${index}`}
+                  className={`idea-card card-copy-${copyDensity(card.body, 14, 22)} ${index === featuredCard ? "is-featured" : ""}`}
+                  key={`card-${index}`}
                   style={{ "--delay": `${index * 90}ms` } as CSSProperties}
                 >
                   <div className="card-topline">
-                    <span className="card-number">{card.tag || `0${index + 1}`}</span>
+                    <span className="card-number">
+                      {card.tag || formatSequenceNumber(index + 1)}
+                    </span>
                     <i />
                     <span className="card-icon-chip">
                       <SemanticIcon name={card.icon || iconFromText(`${card.title} ${card.body}`)} />
@@ -703,14 +693,14 @@ function SceneCanvas({
           <div className="metric-layout">
             <div className="metric-copy">
               <h2>{scene.title}</h2>
-              <p>{scene.subtitle}</p>
+              {scene.subtitle && <p>{scene.subtitle}</p>}
             </div>
             <div className="metric-visual">
               <div className="metric-ring">
                 <span className="metric-icon">
                   <SemanticIcon name={scene.icon || "chart"} />
                 </span>
-                <span className="metric-value">{scene.metric}</span>
+                <span className={`metric-value metric-${metricDensity}`}>{scene.metric}</span>
                 <span className="metric-unit">{scene.metricLabel}</span>
               </div>
             </div>
@@ -769,9 +759,9 @@ async function createPdfDocument(images: string[], firstScene?: Scene) {
 function ExportSlide({ scene, index }: { scene: Scene; index: number }) {
   return (
     <div className="stage-canvas export-slide" data-export-slide>
-      <SceneCanvas scene={scene} phase="entering" />
+      <SceneCanvas scene={scene} sceneNumber={index + 1} phase="entering" />
       <div className="stage-footer">
-        <span>{brand.display_name} / EXPORTED SCENE {String(index + 1).padStart(2, "0")}</span>
+        <span>{brand.display_name} / AUTO-DIRECTOR</span>
         <span className="stage-progress"><i /></span>
         <span>© 2026</span>
       </div>
@@ -789,11 +779,9 @@ export default function Home() {
     "Say something worth seeing. I’ll decide whether to hold, update, or create a new scene.",
   );
   const [partialTranscript, setPartialTranscript] = useState("");
-  const [draftLine, setDraftLine] = useState("");
   const [error, setError] = useState("");
   const [directorStatus, setDirectorStatus] = useState("Waiting for your first idea");
   const [turnCount, setTurnCount] = useState(0);
-  const [motionBeat, setMotionBeat] = useState(0);
   const [history, setHistory] = useState<Scene[]>([INITIAL_SCENE]);
   const [deckScenes, setDeckScenes] = useState<Scene[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -804,6 +792,9 @@ export default function Home() {
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState("");
   const [activeMicrophoneLabel, setActiveMicrophoneLabel] = useState("");
   const [isDetectingMicrophones, setIsDetectingMicrophones] = useState(false);
+  const [selectedRealtimeModel, setSelectedRealtimeModel] =
+    useState<RealtimeModel>(DEFAULT_REALTIME_MODEL);
+  const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
 
   const sceneRef = useRef(scene);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -817,8 +808,11 @@ export default function Home() {
   const handledCalls = useRef(new Set<string>());
   const intentionalCloseRef = useRef(false);
   const imageryAbortRef = useRef<AbortController | null>(null);
+  const imageryRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingImageryUrlRef = useRef<string | null>(null);
   const imageryUnavailableRef = useRef(false);
   const imageryUrlsRef = useRef(new Set<string>());
+  const nextSceneSequenceRef = useRef(0);
 
   useEffect(() => {
     sceneRef.current = scene;
@@ -849,6 +843,8 @@ export default function Home() {
     const initialRefresh = window.setTimeout(() => {
       const storedMicrophoneId = window.localStorage.getItem(MICROPHONE_STORAGE_KEY);
       if (storedMicrophoneId) setSelectedMicrophoneId(storedMicrophoneId);
+      const storedRealtimeModel = window.localStorage.getItem(REALTIME_MODEL_STORAGE_KEY);
+      if (isRealtimeModel(storedRealtimeModel)) setSelectedRealtimeModel(storedRealtimeModel);
       handleDeviceChange();
     }, 0);
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
@@ -890,42 +886,88 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    if (connection !== "live" || !isListening) return;
-    const timer = window.setInterval(() => {
-      setMotionBeat((beat) => beat + 1);
-    }, v7.presentation.motion_beat_ms);
-    return () => window.clearInterval(timer);
-  }, [connection, isListening]);
+  const chooseRealtimeModel = useCallback((model: RealtimeModel) => {
+    setSelectedRealtimeModel(model);
+    window.localStorage.setItem(REALTIME_MODEL_STORAGE_KEY, model);
+    setIsModelSettingsOpen(false);
+  }, []);
 
   const stageScene = useCallback((next: Scene, deckMutation: DeckMutation = "append") => {
-    if (transitionTimer.current) clearTimeout(transitionTimer.current);
-    imageryAbortRef.current?.abort();
-    imageryAbortRef.current = null;
+    if (deckMutation !== "update" && transitionTimer.current) {
+      clearTimeout(transitionTimer.current);
+      transitionTimer.current = null;
+    }
+    const fittedNext = fitSceneToCanvas(next);
+    const outgoing = sceneRef.current;
+    let sequence = fittedNext.sequence ?? 0;
+    if (deckMutation === "append") {
+      sequence = nextSceneSequenceRef.current + 1;
+      nextSceneSequenceRef.current = sequence;
+    } else if (deckMutation === "update" && sequence <= 0) {
+      sequence = outgoing.sequence && outgoing.sequence > 0
+        ? outgoing.sequence
+        : nextSceneSequenceRef.current + 1;
+      nextSceneSequenceRef.current = Math.max(nextSceneSequenceRef.current, sequence);
+    }
+    const numberedNext: Scene = { ...fittedNext, sequence };
+    const isLogicalSceneUpdate =
+      deckMutation === "update" &&
+      outgoing.kind !== "cover" &&
+      outgoing.kind !== "blank" &&
+      outgoing.sequence === sequence;
+    const startsLogicalScene =
+      deckMutation === "append" || (deckMutation === "update" && !isLogicalSceneUpdate);
+
+    if (!isLogicalSceneUpdate) {
+      if (imageryRevealTimerRef.current) {
+        clearTimeout(imageryRevealTimerRef.current);
+        imageryRevealTimerRef.current = null;
+      }
+      if (pendingImageryUrlRef.current) {
+        URL.revokeObjectURL(pendingImageryUrlRef.current);
+        imageryUrlsRef.current.delete(pendingImageryUrlRef.current);
+        pendingImageryUrlRef.current = null;
+      }
+      imageryAbortRef.current?.abort();
+      imageryAbortRef.current = null;
+    }
 
     const canGenerateImagery =
       v7.imagery.enabled &&
       !imageryUnavailableRef.current &&
-      deckMutation !== "view" &&
-      next.kind !== "cover" &&
-      next.kind !== "blank";
-    const stagedNext: Scene = canGenerateImagery
+      startsLogicalScene &&
+      numberedNext.kind !== "cover" &&
+      numberedNext.kind !== "blank";
+    const stagedNext: Scene = isLogicalSceneUpdate
       ? {
-          ...next,
-          backgroundImage: deckMutation === "update" ? next.backgroundImage : undefined,
-          backgroundStatus: "generating",
+          ...numberedNext,
+          backgroundImage: outgoing.backgroundImage,
+          backgroundStatus: outgoing.backgroundStatus,
         }
-      : next;
-    const outgoing = sceneRef.current;
-    setPreviousScene(
-      outgoing.id === stagedNext.id
-        ? { ...outgoing, id: `${outgoing.id}-out` }
-        : outgoing,
-    );
+      : startsLogicalScene
+        ? {
+            ...numberedNext,
+            backgroundImage: undefined,
+            backgroundStatus: canGenerateImagery ? "generating" : undefined,
+          }
+        : numberedNext;
+    const shouldTransitionScenes = deckMutation !== "update" && outgoing.id !== stagedNext.id;
+    if (shouldTransitionScenes) {
+      setPreviousScene(outgoing);
+    } else if (deckMutation !== "update") {
+      setPreviousScene(null);
+    }
     setScene(stagedNext);
     sceneRef.current = stagedNext;
     setHistory((items) =>
-      [...items.filter((item) => item.id !== stagedNext.id), stagedNext].slice(
+      [
+        ...items.filter((item) =>
+          deckMutation === "update"
+            ? item.sequence !== stagedNext.sequence
+            : item.id !== stagedNext.id,
+        ),
+        stagedNext,
+      ].slice(
         -v7.presentation.recent_scene_limit,
       ),
     );
@@ -942,13 +984,18 @@ export default function Home() {
       });
       setDeliveryMessage("Presentation is building — stop when you are ready to export");
     }
-    transitionTimer.current = setTimeout(() => setPreviousScene(null), 820);
+    if (shouldTransitionScenes) {
+      transitionTimer.current = setTimeout(() => setPreviousScene(null), 820);
+    }
 
     if (!canGenerateImagery) return;
 
     const controller = new AbortController();
     imageryAbortRef.current = controller;
     const requestedSceneId = stagedNext.id;
+    const requestedSceneSequence = stagedNext.sequence;
+    const isRequestedSceneCurrent = () =>
+      sceneRef.current.sequence === requestedSceneSequence;
 
     void (async () => {
       try {
@@ -976,25 +1023,69 @@ export default function Home() {
         }
 
         const imageBlob = await response.blob();
-        if (controller.signal.aborted || sceneRef.current.id !== requestedSceneId) return;
+        if (controller.signal.aborted || !isRequestedSceneCurrent()) return;
 
         const imageUrl = URL.createObjectURL(imageBlob);
         imageryUrlsRef.current.add(imageUrl);
-        const enrichedScene: Scene = {
-          ...sceneRef.current,
-          backgroundImage: imageUrl,
-          backgroundStatus: "ready",
+        const decodedImage = new Image();
+        decodedImage.src = imageUrl;
+        try {
+          await decodedImage.decode();
+        } catch {
+          // The browser can still render the object URL even when decode is unavailable.
+        }
+        if (controller.signal.aborted || !isRequestedSceneCurrent()) {
+          URL.revokeObjectURL(imageUrl);
+          imageryUrlsRef.current.delete(imageUrl);
+          return;
+        }
+        const syncCurrentScene = (nextScene: Scene) => {
+          setScene(nextScene);
+          sceneRef.current = nextScene;
+          setHistory((items) =>
+            items.map((item) =>
+              item.sequence === requestedSceneSequence ? nextScene : item,
+            ),
+          );
+          setDeckScenes((items) =>
+            items.map((item) =>
+              item.sequence === requestedSceneSequence ? nextScene : item,
+            ),
+          );
         };
-        setScene(enrichedScene);
-        sceneRef.current = enrichedScene;
-        setHistory((items) =>
-          items.map((item) => (item.id === requestedSceneId ? enrichedScene : item)),
-        );
-        setDeckScenes((items) =>
-          items.map((item) => (item.id === requestedSceneId ? enrichedScene : item)),
-        );
+        const revealImage = () => {
+          if (!isRequestedSceneCurrent()) {
+            URL.revokeObjectURL(imageUrl);
+            imageryUrlsRef.current.delete(imageUrl);
+            pendingImageryUrlRef.current = null;
+            return;
+          }
+          pendingImageryUrlRef.current = null;
+          syncCurrentScene({
+            ...sceneRef.current,
+            backgroundImage: imageUrl,
+            backgroundStatus: "ready",
+          });
+        };
+        const alreadyReservedImageSpace = Boolean(sceneRef.current.backgroundImage);
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (alreadyReservedImageSpace || reduceMotion) {
+          revealImage();
+        } else {
+          pendingImageryUrlRef.current = imageUrl;
+          syncCurrentScene({
+            ...sceneRef.current,
+            backgroundStatus: "reframing",
+          });
+          imageryRevealTimerRef.current = setTimeout(() => {
+            imageryRevealTimerRef.current = null;
+            if (pendingImageryUrlRef.current !== imageUrl) return;
+            revealImage();
+          }, IMAGE_REFLOW_DELAY_MS);
+        }
       } catch {
-        if (controller.signal.aborted || sceneRef.current.id !== requestedSceneId) return;
+        if (controller.signal.aborted || !isRequestedSceneCurrent()) return;
         const unavailableScene: Scene = {
           ...sceneRef.current,
           backgroundStatus: "unavailable",
@@ -1002,10 +1093,14 @@ export default function Home() {
         setScene(unavailableScene);
         sceneRef.current = unavailableScene;
         setHistory((items) =>
-          items.map((item) => (item.id === requestedSceneId ? unavailableScene : item)),
+          items.map((item) =>
+            item.sequence === requestedSceneSequence ? unavailableScene : item,
+          ),
         );
         setDeckScenes((items) =>
-          items.map((item) => (item.id === requestedSceneId ? unavailableScene : item)),
+          items.map((item) =>
+            item.sequence === requestedSceneSequence ? unavailableScene : item,
+          ),
         );
       } finally {
         if (imageryAbortRef.current === controller) imageryAbortRef.current = null;
@@ -1023,16 +1118,12 @@ export default function Home() {
     stopDemo();
     setError("");
     setIsDemoRunning(true);
-    const demoRunId = Date.now();
     DEMO_BEATS.forEach((beat, index) => {
       const timer = setTimeout(() => {
         setTranscript(beat.transcript);
         setPartialTranscript("");
         setDirectorStatus("Demo scene composed");
-        stageScene(
-          { ...beat.scene, id: `demo-${demoRunId}-${index}-${beat.scene.id}` },
-          "append",
-        );
+        stageScene(beat.scene, "append");
         if (index === DEMO_BEATS.length - 1) setIsDemoRunning(false);
       }, index * 2850 + 220);
       demoTimers.current.push(timer);
@@ -1098,7 +1189,6 @@ export default function Home() {
         if (type === "input_audio_buffer.speech_started") {
           setIsListening(true);
           setPartialTranscript("");
-          setMotionBeat((beat) => beat + 1);
           setDirectorStatus("Listening…");
         }
         if (type === "input_audio_buffer.speech_stopped") {
@@ -1127,7 +1217,12 @@ export default function Home() {
         }
         if (type === "error") {
           const detail = event.error as Record<string, unknown> | undefined;
-          setError(String(detail?.message || "The realtime session reported an error."));
+          const message = String(detail?.message || "The realtime session reported an error.");
+          if (/active response in progress/i.test(message)) {
+            setError("");
+            return;
+          }
+          setError(message);
           setDirectorStatus("Realtime error");
         }
       } catch {
@@ -1163,7 +1258,6 @@ export default function Home() {
     setConnection("connecting");
     setError("");
     setTurnCount(0);
-    setMotionBeat(0);
     setDirectorStatus("Starting voice director…");
     setDeliveryMessage("Presentation is live — exports unlock when listening stops");
 
@@ -1227,7 +1321,10 @@ export default function Home() {
       await peer.setLocalDescription(offer);
       const response = await fetch("/api/realtime", {
         method: "POST",
-        headers: { "Content-Type": "application/sdp" },
+        headers: {
+          "Content-Type": "application/sdp",
+          "X-ZeroPrep-Realtime-Model": selectedRealtimeModel,
+        },
         body: offer.sdp,
       });
 
@@ -1256,6 +1353,7 @@ export default function Home() {
     handleRealtimeEvent,
     refreshMicrophones,
     selectedMicrophoneId,
+    selectedRealtimeModel,
     stopDemo,
     stopLive,
   ]);
@@ -1378,30 +1476,18 @@ export default function Home() {
     [captureExportSlides, connection, deckScenes, exporting, isDemoRunning],
   );
 
-  const submitLine = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const clean = draftLine.trim();
-    if (!clean) return;
-    stopDemo();
-    setTranscript(clean);
-    setDirectorStatus("Local scene composed");
-    stageScene(sceneFromLine(clean, history.length), "append");
-    setDraftLine("");
-    setError("");
-  };
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
-      if (event.key.toLowerCase() === "d" && connection !== "live" && connection !== "connecting") {
-        runDemo();
-      }
+      if (event.key.toLowerCase() === "d") runDemo();
       if (event.key.toLowerCase() === "f") {
         event.preventDefault();
         void toggleFullscreen();
       }
       if (
+        connection !== "live" &&
+        connection !== "connecting" &&
         document.fullscreenElement === stageFrameRef.current &&
         deckScenes.length &&
         (event.key === "ArrowLeft" || event.key === "ArrowRight")
@@ -1426,6 +1512,9 @@ export default function Home() {
       stopDemo();
       stopLive();
       imageryAbortRef.current?.abort();
+      if (imageryRevealTimerRef.current) clearTimeout(imageryRevealTimerRef.current);
+      imageryRevealTimerRef.current = null;
+      pendingImageryUrlRef.current = null;
       imageryUrls.forEach((url) => URL.revokeObjectURL(url));
       imageryUrls.clear();
       if (transitionTimer.current) clearTimeout(transitionTimer.current);
@@ -1455,15 +1544,16 @@ export default function Home() {
   const stageSceneNumber =
     isWelcomeScene
       ? 0
-      : activeDeckIndex >= 0
-        ? activeDeckIndex + 1
-        : deckScenes.length;
+      : scene.sequence ?? (activeDeckIndex >= 0 ? activeDeckIndex + 1 : deckScenes.length);
   const deliveryStatus = exporting
     ? `Rendering scene ${exportProgress.current} of ${exportProgress.total}`
     : deliveryMessage;
   const selectedMicrophone = microphones.find(
     (device) => device.deviceId === selectedMicrophoneId,
   );
+  const selectedRealtimeModelOption =
+    REALTIME_MODEL_OPTIONS.find((option) => option.id === selectedRealtimeModel) ??
+    REALTIME_MODEL_OPTIONS[0];
   const microphoneHelp =
     connection === "live"
       ? `LIVE INPUT / ${activeMicrophoneLabel || "SYSTEM DEFAULT MICROPHONE"}`
@@ -1487,9 +1577,9 @@ export default function Home() {
         </a>
         <div className="header-center">
           <span className={`status-dot status-${connection}`} />
-          <span role="status" aria-live="polite">{statusLabel}</span>
+          {statusLabel}
           <span className="header-divider" />
-          GPT-REALTIME-2.1 / {v7.release}
+          {selectedRealtimeModelOption.shortLabel} / {v7.release}
         </div>
         <div className="header-actions">
           <span className="keyboard-hint"><kbd>D</kbd> demo · <kbd>F</kbd> full screen</span>
@@ -1519,7 +1609,7 @@ export default function Home() {
             </button>
             <div className="stage-chrome">
               <span>
-                SCENE {String(stageSceneNumber).padStart(2, "0")}
+                {brand.display_name} / LIVE CANVAS
               </span>
               <span>
                 {scene.kind === "cover"
@@ -1531,27 +1621,32 @@ export default function Home() {
               <span>
                 16:9 / {scene.backgroundStatus === "generating"
                   ? "IMAGERY RENDERING"
-                  : scene.backgroundImage
-                    ? "GEMINI IMAGE LIVE"
-                    : "LIVE"}
+                  : scene.backgroundStatus === "reframing"
+                    ? "LAYOUT REFLOW"
+                    : scene.backgroundImage
+                      ? "GEMINI IMAGE LIVE"
+                      : "LIVE"}
               </span>
             </div>
-            <div
-              className="stage-canvas"
-              aria-busy={scene.backgroundStatus === "generating"}
-              aria-label={`Presentation scene ${stageSceneNumber}: ${scene.title.replace(/\n/g, " ")}`}
-            >
-              {previousScene && <SceneCanvas scene={previousScene} phase="exiting" />}
+            <div className="stage-canvas" aria-live="polite">
+              {previousScene && (
+                <SceneCanvas
+                  scene={previousScene}
+                  sceneNumber={previousScene.sequence ?? Math.max(0, stageSceneNumber - 1)}
+                  phase="exiting"
+                />
+              )}
               <SceneCanvas
-                key={scene.id}
+                key={`scene-${stageSceneNumber}`}
                 scene={scene}
+                sceneNumber={stageSceneNumber}
                 phase="entering"
-                reactive={connection === "live" && isListening}
-                motionBeat={motionBeat}
               />
               {!isWelcomeScene && (
                 <div className="stage-footer">
-                  <span>{brand.display_name} / AUTO-DIRECTOR / TURN {String(turnCount).padStart(2, "0")}</span>
+                  <span>
+                    {brand.display_name} / AUTO-DIRECTOR
+                  </span>
                   <span className="stage-progress"><i /></span>
                   <span>© 2026</span>
                 </div>
@@ -1568,16 +1663,19 @@ export default function Home() {
                   key={item.id}
                   type="button"
                   onClick={() => stageScene(item, "view")}
+                  disabled={connection === "live" || connection === "connecting"}
                   aria-label={`Show ${item.title.replace(/\n/g, " ")}`}
                 >
                   <span>
                     {item.kind === "blank" || item.kind === "cover"
                       ? "00"
-                      : String(
-                          history
+                      : formatSequenceNumber(
+                          item.sequence ?? history
                             .slice(0, index + 1)
-                            .filter((recent) => recent.kind !== "blank").length,
-                        ).padStart(2, "0")}
+                            .filter(
+                              (recent) => recent.kind !== "blank" && recent.kind !== "cover",
+                            ).length,
+                        )}
                   </span>
                   <i className={`mini-accent accent-${item.accent}`} />
                 </button>
@@ -1587,7 +1685,7 @@ export default function Home() {
 
           <div className="delivery-bar" aria-label="Present and export">
             <div className="delivery-copy">
-              <span>DELIVERY MODE / {String(deckScenes.length).padStart(2, "0")} SCENES</span>
+              <span>DELIVERY MODE / {formatSequenceNumber(deckScenes.length)} SCENES</span>
               <strong>{deliveryStatus}</strong>
             </div>
             <div className="delivery-actions">
@@ -1629,7 +1727,12 @@ export default function Home() {
               <p>VOICE DIRECTOR</p>
               <h2>Make the room<br />feel your point.</h2>
             </div>
-            <span className="model-pill">2.1</span>
+            <span
+              className={`model-pill ${selectedRealtimeModel.endsWith("-mini") ? "is-mini" : ""}`}
+              title={selectedRealtimeModelOption.label}
+            >
+              {selectedRealtimeModel.endsWith("-mini") ? "MINI" : "2.1"}
+            </span>
           </div>
 
           <div className={`listening-card ${isListening ? "is-listening" : ""}`}>
@@ -1648,154 +1751,126 @@ export default function Home() {
             </div>
           </div>
 
-          <div
-            className={`microphone-picker ${connection === "live" ? "is-live" : ""} ${
-              isDetectingMicrophones ? "is-detecting" : ""
-            }`}
-          >
+          <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
             <div className="microphone-picker-heading">
-              <div className="microphone-picker-heading-copy">
-                <span className="microphone-picker-icon" aria-hidden="true"><Mic /></span>
-                <span>
-                  <label htmlFor="microphone-input">VOICE SOURCE</label>
-                  <small>Choose the microphone you want to use</small>
-                </span>
-              </div>
-              <div className="microphone-picker-actions">
-                <span className="microphone-signal" aria-hidden="true">
-                  <i /><i /><i /><i /><i />
-                </span>
-                <button
-                  className="microphone-detect"
-                  type="button"
-                  onClick={() => void detectMicrophones()}
-                  disabled={
-                    connection === "live" ||
-                    connection === "connecting" ||
-                    isDetectingMicrophones
-                  }
-                >
-                  {isDetectingMicrophones ? "DETECTING…" : "DETECT"}
-                </button>
-              </div>
-            </div>
-            <div className="microphone-select-shell">
-              <span className="microphone-select-icon" aria-hidden="true"><Mic /></span>
-              <select
-                id="microphone-input"
-                value={selectedMicrophoneId}
-                onChange={(event) => chooseMicrophone(event.target.value)}
+              <label htmlFor="microphone-input">MICROPHONE INPUT</label>
+              <button
+                type="button"
+                onClick={() => void detectMicrophones()}
                 disabled={
                   connection === "live" ||
                   connection === "connecting" ||
                   isDetectingMicrophones
                 }
-                aria-describedby="microphone-help"
               >
-                <option value="">System default microphone</option>
-                {selectedMicrophoneId && !selectedMicrophone && (
-                  <option value={selectedMicrophoneId}>Previously selected microphone</option>
-                )}
-                {microphones.map((device, index) => (
-                  <option key={device.deviceId || `microphone-${index}`} value={device.deviceId}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="microphone-select-chevron" aria-hidden="true" />
-            </div>
-            <div className="microphone-picker-footer">
-              <span className={`microphone-input-status ${connection === "live" ? "is-live" : ""}`}>
-                <i aria-hidden="true" />
-                {connection === "live"
-                  ? "Live input"
-                  : isDetectingMicrophones
-                    ? "Checking devices"
-                    : microphones.length > 0
-                      ? "Input ready"
-                      : "Awaiting input"}
-              </span>
-              <small id="microphone-help">{microphoneHelp}</small>
-            </div>
-          </div>
-
-          <div className="session-actions" aria-label="Presentation controls">
-            {connection === "live" ? (
-              <button
-                className="mic-button stop-button"
-                type="button"
-                onClick={stopLive}
-                aria-label="Stop presentation and end continuous listening"
-              >
-                <span className="stop-icon" aria-hidden="true"><i /></span>
-                <span>
-                  <strong>Stop presentation</strong>
-                  <small>End continuous listening</small>
-                </span>
-                <span className="mic-arrow">■</span>
+                {isDetectingMicrophones ? "DETECTING…" : "DETECT"}
               </button>
-            ) : (
+            </div>
+            <div className="microphone-control-row">
+              <div className="microphone-select-shell">
+                <Headphones aria-hidden="true" />
+                <select
+                  id="microphone-input"
+                  value={selectedMicrophoneId}
+                  onChange={(event) => chooseMicrophone(event.target.value)}
+                  disabled={
+                    connection === "live" ||
+                    connection === "connecting" ||
+                    isDetectingMicrophones
+                  }
+                  aria-describedby="microphone-help"
+                >
+                  <option value="">System default microphone</option>
+                  {selectedMicrophoneId && !selectedMicrophone && (
+                    <option value={selectedMicrophoneId}>Previously selected microphone</option>
+                  )}
+                  {microphones.map((device, index) => (
+                    <option key={device.deviceId || `microphone-${index}`} value={device.deviceId}>
+                      {device.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <span aria-hidden="true">⌄</span>
+              </div>
               <button
-                className="mic-button"
+                className="model-settings-toggle"
                 type="button"
-                onClick={() => void startLive()}
-                disabled={connection === "connecting"}
-                aria-label="Start presentation and listen continuously"
+                onClick={() => setIsModelSettingsOpen((isOpen) => !isOpen)}
+                disabled={connection === "live" || connection === "connecting"}
+                aria-label={`Choose voice model. Current model: ${selectedRealtimeModelOption.label}`}
+                aria-expanded={isModelSettingsOpen}
+                aria-controls="voice-model-settings"
+                title="Voice model settings"
               >
-                <span className="mic-icon" aria-hidden="true"><i /></span>
-                <span>
-                  <strong>
-                    {connection === "connecting"
-                      ? "Starting presentation…"
-                      : "Start live presentation"}
-                  </strong>
-                  <small>Listens continuously until stopped</small>
-                </span>
-                <span className="mic-arrow">↗</span>
+                <Settings aria-hidden="true" />
               </button>
+            </div>
+            {isModelSettingsOpen && (
+              <div className="model-settings-panel" id="voice-model-settings">
+                <div className="model-settings-heading">
+                  <span>VOICE MODEL</span>
+                  <strong>Applies to the next session</strong>
+                </div>
+                <div className="model-options" role="radiogroup" aria-label="Voice model">
+                  {REALTIME_MODEL_OPTIONS.map((option) => {
+                    const isSelected = option.id === selectedRealtimeModel;
+                    return (
+                      <button
+                        key={option.id}
+                        className={isSelected ? "is-selected" : ""}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => chooseRealtimeModel(option.id)}
+                      >
+                        <span>
+                          <strong>{option.label}</strong>
+                          <small>{option.description}</small>
+                        </span>
+                        <i>{option.badge}</i>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
-            <button
-              className="demo-button"
-              type="button"
-              onClick={runDemo}
-              disabled={connection === "live" || connection === "connecting" || isDemoRunning}
-              aria-label={isDemoRunning ? "Sample presentation is playing" : "Watch a sample presentation"}
-            >
-              <span className="demo-button-icon" aria-hidden="true"><Sparkles /></span>
-              <span className="demo-button-copy">
-                <strong>{isDemoRunning ? "Sample is playing…" : "Watch a sample"}</strong>
-                <small>Preview the visual flow before you start</small>
-              </span>
-              <span className="demo-button-action" aria-hidden="true">Play</span>
-            </button>
+            <small id="microphone-help">{microphoneHelp}</small>
           </div>
 
-          <section className="manual-compose" aria-labelledby="manual-compose-heading">
-            <div className="director-rule">
-              <span />
-              <small>OR COMPOSE A SCENE</small>
-              <span />
-            </div>
-
-            <form className="line-form" onSubmit={submitLine}>
-              <div className="line-form-heading">
-                <label id="manual-compose-heading" htmlFor="spoken-line">What are you saying next?</label>
-                <small>Press Enter to compose</small>
-              </div>
-              <div>
-                <input
-                  id="spoken-line"
-                  value={draftLine}
-                  onChange={(event) => setDraftLine(event.target.value)}
-                  placeholder="We have three priorities…"
-                />
-                <button type="submit">
-                  <span>Compose</span>
-                  <span aria-hidden="true">→</span>
-                </button>
-              </div>
-            </form>
-          </section>
+          {connection === "live" ? (
+            <button
+              className="mic-button stop-button"
+              type="button"
+              onClick={stopLive}
+              aria-label="Stop presentation and end continuous listening"
+            >
+              <span className="stop-icon" aria-hidden="true"><i /></span>
+              <span>
+                <strong>Stop presentation</strong>
+                <small>End continuous listening</small>
+              </span>
+              <span className="mic-arrow">■</span>
+            </button>
+          ) : (
+            <button
+              className="mic-button"
+              type="button"
+              onClick={() => void startLive()}
+              disabled={connection === "connecting"}
+              aria-label="Start presentation and listen continuously"
+            >
+              <span className="mic-icon" aria-hidden="true"><i /></span>
+              <span>
+                <strong>
+                  {connection === "connecting"
+                    ? "Starting presentation…"
+                    : "Start live presentation"}
+                </strong>
+                <small>Listens continuously until stopped</small>
+              </span>
+              <span className="mic-arrow">↗</span>
+            </button>
+          )}
 
           {error && (
             <div className="error-note" role="alert">
