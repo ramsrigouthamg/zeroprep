@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accessibility,
@@ -400,18 +400,6 @@ const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
   },
 ];
 
-const ACCENTS: Scene["accent"][] = ["ember", "lime", "sky", "violet"];
-
-function titleCase(value: string) {
-  return value
-    .replace(/[^a-zA-Z0-9\s-]/g, " ")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 7)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
 const ICON_RULES: Array<[RegExp, IconName]> = [
   [/\b(?:hospital|doctor|nurse|patient|medical|healthcare|clinic)\b/, "stethoscope"],
   [/\b(?:medicine|medication|pharma|drug|tablet)\b/, "pill"],
@@ -538,89 +526,6 @@ function fitSceneToCanvas(scene: Scene): Scene {
     quote: scene.kind === "quote" ? fitCopy(scene.quote, 240, scene.title) : scene.quote,
     attribution:
       scene.kind === "quote" ? fitCopy(scene.attribution, 60, "LIVE TRANSCRIPT") : scene.attribution,
-  };
-}
-
-function sceneFromLine(line: string, index: number): Scene {
-  const clean = line.trim();
-  const accent = ACCENTS[index % ACCENTS.length];
-  const metric = clean.match(/(?:^|\s)(<?\d[\d,.]*)(%|x|ms|k|m|b)?\b/i);
-  const enumeration = clean
-    .split(/\b(?:first|second|third|finally|next)\b[:,]?\s*/i)
-    .map((part) => part.replace(/^[,;:\s]+|[,;:\s]+$/g, ""))
-    .filter((part) => part.length > 8);
-
-  if (/\bthree\b/i.test(clean) || enumeration.length >= 3) {
-    const source =
-      enumeration.length >= 3
-        ? enumeration.slice(-3)
-        : clean
-            .replace(/^.*?\bthree\b\s*/i, "")
-            .split(/,|\band\b/i)
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .slice(0, 3);
-    const fallbacks = [
-      "The first idea takes shape.",
-      "The second idea adds context.",
-      "The third idea completes the story.",
-    ];
-
-    return {
-      id: `local-cards-${Date.now()}`,
-      kind: "cards",
-      eyebrow: "THREE PARTS  /  ONE SCENE",
-      title: "A thought, composed as a system.",
-      subtitle: clean,
-      accent,
-      icon: "workflow",
-      cards: [0, 1, 2].map((cardIndex) => {
-        const body = source[cardIndex] || fallbacks[cardIndex];
-        return {
-          tag: `0${cardIndex + 1}`,
-          title: titleCase(body).split(" ").slice(0, 3).join(" "),
-          body,
-          icon: iconFromText(body),
-        };
-      }),
-    };
-  }
-
-  if (metric) {
-    return {
-      id: `local-metric-${Date.now()}`,
-      kind: "metric",
-      eyebrow: "SIGNAL DETECTED  /  KEY NUMBER",
-      title: titleCase(clean.replace(metric[0], "").trim()) || "The number that matters.",
-      subtitle: clean,
-      accent,
-      icon: iconFromText(clean),
-      metric: `${metric[1]}${metric[2] || ""}`,
-      metricLabel: "LIVE HIGHLIGHT",
-    };
-  }
-
-  if (/\b(?:quote|remember|believe)\b/i.test(clean)) {
-    return {
-      id: `local-quote-${Date.now()}`,
-      kind: "quote",
-      eyebrow: "KEY IDEA  /  HOLD THE ROOM",
-      title: "Let the thought breathe.",
-      quote: clean.replace(/^.*?\b(?:quote|remember|believe)\b[:,]?\s*/i, ""),
-      attribution: "LIVE TRANSCRIPT",
-      accent,
-      icon: "quote",
-    };
-  }
-
-  return {
-    id: `local-hero-${Date.now()}`,
-    kind: "hero",
-    eyebrow: "LIVE THOUGHT  /  VISUALIZED",
-    title: titleCase(clean) || "A new idea takes the stage.",
-    subtitle: clean,
-    accent,
-    icon: iconFromText(clean),
   };
 }
 
@@ -874,7 +779,6 @@ export default function Home() {
     "Say something worth seeing. I’ll decide whether to hold, update, or create a new scene.",
   );
   const [partialTranscript, setPartialTranscript] = useState("");
-  const [draftLine, setDraftLine] = useState("");
   const [error, setError] = useState("");
   const [directorStatus, setDirectorStatus] = useState("Waiting for your first idea");
   const [turnCount, setTurnCount] = useState(0);
@@ -1313,7 +1217,12 @@ export default function Home() {
         }
         if (type === "error") {
           const detail = event.error as Record<string, unknown> | undefined;
-          setError(String(detail?.message || "The realtime session reported an error."));
+          const message = String(detail?.message || "The realtime session reported an error.");
+          if (/active response in progress/i.test(message)) {
+            setError("");
+            return;
+          }
+          setError(message);
           setDirectorStatus("Realtime error");
         }
       } catch {
@@ -1566,18 +1475,6 @@ export default function Home() {
     },
     [captureExportSlides, connection, deckScenes, exporting, isDemoRunning],
   );
-
-  const submitLine = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const clean = draftLine.trim();
-    if (!clean) return;
-    stopDemo();
-    setTranscript(clean);
-    setDirectorStatus("Local scene composed");
-    stageScene(sceneFromLine(clean, history.length), "append");
-    setDraftLine("");
-    setError("");
-  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1974,25 +1871,6 @@ export default function Home() {
               <span className="mic-arrow">↗</span>
             </button>
           )}
-
-          <div className="director-rule">
-            <span />
-            <small>OR SIMULATE A LINE</small>
-            <span />
-          </div>
-
-          <form className="line-form" onSubmit={submitLine}>
-            <label htmlFor="spoken-line">What are you saying next?</label>
-            <div>
-              <input
-                id="spoken-line"
-                value={draftLine}
-                onChange={(event) => setDraftLine(event.target.value)}
-                placeholder="We have three priorities…"
-              />
-              <button type="submit" aria-label="Stage this line">→</button>
-            </div>
-          </form>
 
           {error && (
             <div className="error-note" role="alert">

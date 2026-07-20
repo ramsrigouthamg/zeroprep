@@ -19,4 +19,11 @@ test("lets presenters discover, remember, and use a specific microphone", async 
   assert.match(page, /detectMicrophones/);
   assert.match(css, /\.microphone-picker/);
   assert.match(css, /\.microphone-select-shell/);
+  assert.match(css, /\.microphone-picker\s*\{[^}]*padding:\s*10px 11px 9px/s);
+  assert.match(css, /\.microphone-select-shell\s*\{[^}]*min-height:\s*36px/s);
+  assert.doesNotMatch(
+    page,
+    /What are you saying next|OR SIMULATE A LINE|microphone-picker-heading-copy|microphone-signal|microphone-picker-footer/,
+  );
+  assert.doesNotMatch(css, /\.director-rule|\.line-form/);
 });

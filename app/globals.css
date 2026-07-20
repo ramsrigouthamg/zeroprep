@@ -2145,61 +2145,6 @@ kbd {
   font-size: 17px;
 }
 
-.director-rule {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  margin: 18px 0;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 6px;
-  letter-spacing: 0.08em;
-}
-
-.director-rule span {
-  height: 1px;
-  background: var(--line);
-}
-
-.line-form label {
-  display: block;
-  margin-bottom: 7px;
-  color: #55524d;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.line-form > div {
-  display: grid;
-  grid-template-columns: 1fr 37px;
-}
-
-.line-form input {
-  min-width: 0;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-right: 0;
-  border-radius: 3px 0 0 3px;
-  background: rgba(255, 255, 255, 0.46);
-  color: var(--ink);
-  font-size: 10px;
-}
-
-.line-form input::placeholder {
-  color: #908d85;
-}
-
-.line-form button {
-  border: 0;
-  border-radius: 0 3px 3px 0;
-  background: var(--lime);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 16px;
-}
-
 .error-note {
   display: grid;
   grid-template-columns: 22px 1fr;
