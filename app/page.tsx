@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import NextImage from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accessibility,
@@ -130,6 +131,10 @@ import brand from "@/config/brand.json";
 import v7 from "@/config/v7.json";
 import type { IconName } from "@/lib/iconography";
 import {
+  matchPresentationAssets,
+  type PresentationAsset,
+} from "@/lib/presentation-assets";
+import {
   DEFAULT_REALTIME_MODEL,
   isRealtimeModel,
   REALTIME_MODEL_OPTIONS,
@@ -161,6 +166,7 @@ type Scene = {
   attribution?: string;
   backgroundImage?: string;
   backgroundStatus?: "generating" | "reframing" | "ready" | "unavailable";
+  matchedAssets?: PresentationAsset[];
 };
 
 type ConnectionState = "ready" | "connecting" | "live" | "error";
@@ -170,6 +176,8 @@ type ExportFormat = "pdf" | "pptx";
 const MICROPHONE_STORAGE_KEY = "zeroprep.microphone-device-id";
 const REALTIME_MODEL_STORAGE_KEY = "zeroprep.realtime-model.v2";
 const IMAGE_REFLOW_DELAY_MS = 560;
+const MAX_PRESENTATION_ASSETS = 12;
+const MAX_PRESENTATION_ASSET_BYTES = 5 * 1024 * 1024;
 
 type DirectorCommand = {
   action?: "replace" | "merge_cards" | "focus" | "hold";
@@ -529,6 +537,38 @@ function fitSceneToCanvas(scene: Scene): Scene {
   };
 }
 
+function sceneText(scene: Scene) {
+  return [
+    scene.eyebrow,
+    scene.title,
+    scene.subtitle,
+    scene.metric,
+    scene.metricLabel,
+    scene.quote,
+    scene.attribution,
+    ...(scene.cards || []).flatMap((card) => [card.title, card.body]),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function defaultAssetName(fileName: string) {
+  return fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Untitled asset";
+}
+
+function readAssetFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(file);
+  });
+}
+
 function normalizeScene(command: DirectorCommand, current: Scene): Scene | null {
   if (command.action === "hold") return null;
 
@@ -641,6 +681,16 @@ function SceneCanvas({
       <div className="scene-noise" />
       <div className="scene-orbit scene-orbit-one" />
       <div className="scene-orbit scene-orbit-two" />
+      {!!scene.matchedAssets?.length && (
+        <div className={`scene-assets scene-assets-${scene.matchedAssets.length}`} aria-label="Referenced presentation assets">
+          {scene.matchedAssets.map((asset) => (
+            <figure className="scene-asset" key={asset.id}>
+              <NextImage src={asset.url} alt={asset.name} width={300} height={300} unoptimized />
+              <figcaption>{asset.name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
       <div className="scene-content">
         <p className="scene-eyebrow">
           <span />
@@ -795,6 +845,7 @@ export default function Home() {
   const [selectedRealtimeModel, setSelectedRealtimeModel] =
     useState<RealtimeModel>(DEFAULT_REALTIME_MODEL);
   const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
+  const [presentationAssets, setPresentationAssets] = useState<PresentationAsset[]>([]);
 
   const sceneRef = useRef(scene);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -813,10 +864,61 @@ export default function Home() {
   const imageryUnavailableRef = useRef(false);
   const imageryUrlsRef = useRef(new Set<string>());
   const nextSceneSequenceRef = useRef(0);
+  const presentationAssetsRef = useRef<PresentationAsset[]>([]);
 
   useEffect(() => {
     sceneRef.current = scene;
   }, [scene]);
+
+  useEffect(() => {
+    presentationAssetsRef.current = presentationAssets;
+  }, [presentationAssets]);
+
+  const addPresentationAssets = useCallback(async (files: FileList | null) => {
+    if (!files?.length) return;
+    const candidates = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (candidates.length !== files.length) {
+      setError("Only image files can be added to the presentation asset library.");
+    }
+    const withinSizeLimit = candidates.filter((file) => file.size <= MAX_PRESENTATION_ASSET_BYTES);
+    if (withinSizeLimit.length !== candidates.length) {
+      setError("Each presentation asset must be 5 MB or smaller.");
+    }
+    const remaining = Math.max(0, MAX_PRESENTATION_ASSETS - presentationAssetsRef.current.length);
+    const selectedFiles = withinSizeLimit.slice(0, remaining);
+    if (!selectedFiles.length) {
+      setError(`The asset library can contain up to ${MAX_PRESENTATION_ASSETS} images.`);
+      return;
+    }
+    try {
+      const added = await Promise.all(selectedFiles.map(async (file, index) => {
+        const name = defaultAssetName(file.name);
+        return {
+          id: `${Date.now()}-${index}-${crypto.randomUUID()}`,
+          name,
+          aliases: [name.toLowerCase()],
+          url: await readAssetFile(file),
+        } satisfies PresentationAsset;
+      }));
+      setPresentationAssets((assets) => [...assets, ...added]);
+      setError("");
+      setDirectorStatus(`${added.length} visual asset${added.length === 1 ? "" : "s"} ready`);
+    } catch (assetError) {
+      setError(assetError instanceof Error ? assetError.message : "The image could not be added.");
+    }
+  }, []);
+
+  const updateAssetName = useCallback((id: string, name: string) => {
+    setPresentationAssets((assets) => assets.map((asset) =>
+      asset.id === id
+        ? { ...asset, name: name.slice(0, 48), aliases: [...new Set([name.trim().toLowerCase(), ...asset.aliases])].filter(Boolean) }
+        : asset,
+    ));
+  }, []);
+
+  const removePresentationAsset = useCallback((id: string) => {
+    setPresentationAssets((assets) => assets.filter((asset) => asset.id !== id));
+  }, []);
 
   const refreshMicrophones = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -909,7 +1011,13 @@ export default function Home() {
         : nextSceneSequenceRef.current + 1;
       nextSceneSequenceRef.current = Math.max(nextSceneSequenceRef.current, sequence);
     }
-    const numberedNext: Scene = { ...fittedNext, sequence };
+    const numberedNext: Scene = {
+      ...fittedNext,
+      sequence,
+      matchedAssets:
+        fittedNext.matchedAssets ||
+        matchPresentationAssets(sceneText(fittedNext), presentationAssetsRef.current),
+    };
     const isLogicalSceneUpdate =
       deckMutation === "update" &&
       outgoing.kind !== "cover" &&
@@ -1324,6 +1432,10 @@ export default function Home() {
         headers: {
           "Content-Type": "application/sdp",
           "X-ZeroPrep-Realtime-Model": selectedRealtimeModel,
+          "X-ZeroPrep-Asset-Catalog": presentationAssetsRef.current
+            .map((asset) => `${asset.name}|${asset.aliases.join(",")}`)
+            .join(";")
+            .slice(0, 2000),
         },
         body: offer.sdp,
       });
@@ -1750,6 +1862,56 @@ export default function Home() {
               <span>{directorStatus.toUpperCase()}</span>
             </div>
           </div>
+
+          <section className="asset-library" aria-labelledby="asset-library-title">
+            <div className="asset-library-heading">
+              <div>
+                <p id="asset-library-title">PRESENTATION ASSETS</p>
+                <small>Upload people, logos, or product images. Mention their names and they appear in the matching scene.</small>
+              </div>
+              <label className="asset-upload-button">
+                <Camera aria-hidden="true" />
+                <span>Add images</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    void addPresentationAssets(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={presentationAssets.length >= MAX_PRESENTATION_ASSETS}
+                />
+              </label>
+            </div>
+            {presentationAssets.length ? (
+              <div className="asset-list">
+                {presentationAssets.map((asset) => (
+                  <div className="asset-library-item" key={asset.id}>
+                    <NextImage src={asset.url} alt="" width={64} height={64} unoptimized />
+                    <label>
+                      <span>MENTION AS</span>
+                      <input
+                        value={asset.name}
+                        maxLength={48}
+                        onChange={(event) => updateAssetName(asset.id, event.target.value)}
+                        aria-label={`Name for ${asset.name}`}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removePresentationAsset(asset.id)}
+                      aria-label={`Remove ${asset.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="asset-library-empty">No assets yet — images stay in this browser and are never sent to image generation.</p>
+            )}
+          </section>
 
           <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
             <div className="microphone-picker-heading">

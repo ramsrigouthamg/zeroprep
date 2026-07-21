@@ -118,6 +118,9 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   const requestedModel = request.headers.get("X-ZeroPrep-Realtime-Model");
+  const assetCatalog = (request.headers.get("X-ZeroPrep-Asset-Catalog") || "")
+    .replace(/[^a-zA-Z0-9 .,_;|&'()-]/g, "")
+    .slice(0, 2000);
   const realtimeModel = isRealtimeModel(requestedModel)
     ? requestedModel
     : DEFAULT_REALTIME_MODEL;
@@ -137,7 +140,11 @@ export async function POST(request: Request) {
   const session = {
     type: "realtime",
     model: realtimeModel,
-    instructions: DIRECTOR_INSTRUCTIONS,
+    instructions: `${DIRECTOR_INSTRUCTIONS}${assetCatalog ? `
+
+Presentation asset library: ${assetCatalog}
+When the presenter mentions a listed asset by name or alias, create or update a scene whose visible copy includes that exact name. The client will place the matching uploaded image on the scene. Do not describe the image itself, invent assets, or include asset names unless the presenter has referenced them.
+` : ""}`,
     output_modalities: v7.realtime.output_modalities,
     max_output_tokens: v7.realtime.max_output_tokens,
     audio: {
