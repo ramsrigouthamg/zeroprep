@@ -12,6 +12,20 @@ ZeroPrep listens while you speak and composes a live visual presentation around 
 
 [Watch the ZeroPrep demo on YouTube](https://www.youtube.com/watch?v=oVaLFjXy2gY)
 
+## Built with Codex at the Hyderabad hackathon
+
+ZeroPrep started at the OpenAI Codex Hackathon in Hyderabad, where Ramsri and Danish met for the first time. Over the next day, we went from two strangers with a rough idea to a working product.
+
+We used Codex with `gpt-5.6-sol` as a hands-on engineering partner throughout the build. Our loop was simple: explain what we wanted, let Codex inspect and change the codebase, try the result live, and bring back the rough edges. Codex helped us:
+
+- Turn the initial idea into a working Next.js application
+- Build and debug the realtime voice and visual-update flow
+- Iterate on dynamic layouts, motion, microphone controls, and error handling
+- Coordinate asynchronous generated imagery without letting stale responses replace newer scenes
+- Add PDF and PowerPoint exports, then run builds and checks before shipping
+
+What stood out was that Codex could keep track of the whole system—from WebRTC and model tool calls to React rendering and browser exports—while we focused on product decisions and tested how the experience felt. `gpt-5.6-sol` was used during development through Codex; it is not part of ZeroPrep's runtime model stack.
+
 ## What it does
 
 - Listens continuously until the presenter stops the session
