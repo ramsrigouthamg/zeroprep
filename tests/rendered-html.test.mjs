@@ -30,6 +30,12 @@ test("defines the ZeroPrep presentation studio and metadata", async () => {
   assert.match(page, /ZEROPREP COVER \/ AWAITING SPEECH/);
   assert.match(page, /Start live presentation/);
   assert.match(page, /Listens continuously until stopped/);
+  assert.match(
+    css,
+    /\.mic-button\.stop-button:hover:not\(:disabled\),[\s\S]*?background:\s*var\(--ember\)/,
+  );
+  assert.doesNotMatch(page, /THE DIRECTOR DECIDES/);
+  assert.doesNotMatch(css, /\.decision-legend/);
   assert.match(page, /selectedRealtimeModelOption\.shortLabel/);
   assert.match(page, /cards-count-\$\{cardCount\}/);
   assert.match(css, /\.scene-cover/);
@@ -46,7 +52,7 @@ test("defines the ZeroPrep presentation studio and metadata", async () => {
   assert.match(page, /nextSceneSequenceRef/);
   assert.match(page, /const isLogicalSceneUpdate/);
   assert.match(page, /startsLogicalScene &&/);
-  assert.match(page, /backgroundImage: outgoing\.backgroundImage/);
+  assert.match(page, /backgroundImage: suppressGeneratedImagery \? undefined : outgoing\.backgroundImage/);
   assert.match(page, /sceneRef\.current\.sequence === requestedSceneSequence/);
   assert.match(page, /\{brand\.display_name\} \/ LIVE CANVAS/);
   assert.match(page, /\{brand\.display_name\} \/ AUTO-DIRECTOR/);

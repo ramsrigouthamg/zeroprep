@@ -33,10 +33,15 @@ What stood out was that Codex could keep track of the whole system, from WebRTC 
 - Uses GPT-Realtime 2.1 by default to understand live speech and direct visual changes
 - Lets the presenter switch to GPT-Realtime 2.1 Mini for faster, lower-cost sessions
 - Generates scene-aware background imagery asynchronously with Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)
+- Lets you upload your own images, then chooses when to show them and how to compose them into each presentation slide
 - Renders animated presentation scenes with React, HTML, and CSS
 - Builds heroes, cards, metrics, quotes, icons, and diagrams dynamically
 - Downloads the completed presentation locally as PDF or PowerPoint
 - Presents the live canvas in fullscreen
+
+## Presentation assets
+
+Upload your own images before presenting and add a short description for each one. As you speak, ZeroPrep chooses when an image is relevant and automatically composes it into the presentation.
 
 ## Architecture
 
@@ -53,7 +58,7 @@ New scene → text and layout render immediately
 Finished scenes → browser PDF/PPTX renderer → local device download
 ```
 
-OpenAI and Gemini credentials remain server-side. Exported presentations are generated in the browser and downloaded directly to the presenter’s device; ZeroPrep does not upload or preserve them on a public server.
+OpenAI and Gemini credentials remain server-side. Exported presentations are generated in the browser and downloaded directly to the presenter’s device. ZeroPrep does not preserve assets or exports on a public server.
 
 ## Technology
 
