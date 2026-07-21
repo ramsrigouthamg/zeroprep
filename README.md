@@ -4,7 +4,7 @@
 
 ZeroPrep listens while you speak and composes a live visual presentation around your ideas. It can hold the current scene, evolve it with more detail, or introduce a new visual beat without requiring a prepared slide deck.
 
-![ZeroPrep — live presentations, zero prep](public/og.png)
+![ZeroPrep: live presentations, zero prep](public/og.png)
 
 ## Demo
 
@@ -12,9 +12,9 @@ ZeroPrep listens while you speak and composes a live visual presentation around 
 
 [Watch the ZeroPrep demo on YouTube](https://www.youtube.com/watch?v=oVaLFjXy2gY)
 
-## Built with Codex at the Hyderabad hackathon
+## Won 1st place at OpenAI Codex Hyderabad hackathon
 
-ZeroPrep started at the OpenAI Codex Hackathon in Hyderabad, where Ramsri and Danish met for the first time. Over the next day, we went from two strangers with a rough idea to a working product.
+ZeroPrep started at the OpenAI Codex Hackathon in Hyderabad, where Ramsri and Danish met for the first time. In one day, we went from two strangers with a rough idea to a working product.
 
 We used Codex with `gpt-5.6-sol` as a hands-on engineering partner throughout the build. Our loop was simple: explain what we wanted, let Codex inspect and change the codebase, try the result live, and bring back the rough edges. Codex helped us:
 
@@ -24,7 +24,7 @@ We used Codex with `gpt-5.6-sol` as a hands-on engineering partner throughout th
 - Coordinate asynchronous generated imagery without letting stale responses replace newer scenes
 - Add PDF and PowerPoint exports, then run builds and checks before shipping
 
-What stood out was that Codex could keep track of the whole system—from WebRTC and model tool calls to React rendering and browser exports—while we focused on product decisions and tested how the experience felt. `gpt-5.6-sol` was used during development through Codex; it is not part of ZeroPrep's runtime model stack.
+What stood out was that Codex could keep track of the whole system, from WebRTC and model tool calls to React rendering and browser exports, while we focused on product decisions and tested how the experience felt. `gpt-5.6-sol` was used during development through Codex; it is not part of ZeroPrep's runtime model stack.
 
 ## What it does
 
@@ -115,4 +115,4 @@ npm test
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
