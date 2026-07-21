@@ -19,8 +19,11 @@ test("generated imagery enriches only the current scene without blocking composi
   const packageJson = JSON.parse(packageText);
 
   assert.equal(config.imagery.model, "gemini-3.1-flash-lite-image");
+  assert.equal(config.imagery.reference_model, "gemini-3.1-flash-lite-image");
   assert.equal(config.imagery.aspect_ratio, "16:9");
   assert.equal(config.imagery.image_size, "1K");
+  assert.equal(config.imagery.max_reference_assets, 3);
+  assert.equal(config.imagery.max_reference_bytes, 900000);
   assert.equal(packageJson.dependencies["@google/genai"], "^2.12.0");
   assert.match(envExample, /GEMINI_API_KEY=/);
 
@@ -28,7 +31,10 @@ test("generated imagery enriches only the current scene without blocking composi
   assert.match(routeSource, /interaction\.output_image/);
   assert.match(routeSource, /hasMismatchedOrigin/);
   assert.match(routeSource, /checkRateLimit/);
-  assert.match(routeSource, /No words, letters, numbers/);
+  assert.match(routeSource, /No new words, letters, numbers/);
+  assert.match(routeSource, /referenceAssets/);
+  assert.match(routeSource, /type: "image" as const/);
+  assert.match(routeSource, /references\.length \? v7\.imagery\.reference_model/);
 
   assert.match(
     pageSource,
@@ -36,7 +42,7 @@ test("generated imagery enriches only the current scene without blocking composi
   );
   assert.match(pageSource, /const isLogicalSceneUpdate/);
   assert.match(pageSource, /startsLogicalScene &&/);
-  assert.match(pageSource, /backgroundImage: outgoing\.backgroundImage/);
+  assert.match(pageSource, /backgroundImage: suppressGeneratedImagery \? undefined : outgoing\.backgroundImage/);
   assert.match(pageSource, /sceneRef\.current\.sequence === requestedSceneSequence/);
   assert.match(pageSource, /imageryAbortRef\.current\?\.abort\(\)/);
   assert.match(pageSource, /URL\.createObjectURL/);
@@ -44,10 +50,20 @@ test("generated imagery enriches only the current scene without blocking composi
   assert.match(pageSource, /await decodedImage\.decode\(\)/);
   assert.match(pageSource, /backgroundStatus: "reframing"/);
   assert.match(pageSource, /IMAGE_REFLOW_DELAY_MS/);
-  assert.match(pageSource, /if \(!isLogicalSceneUpdate\)/);
+  assert.match(pageSource, /if \(!isLogicalSceneUpdate \|\| suppressGeneratedImagery\)/);
+  assert.match(pageSource, /exactAssetKinds:/);
+  assert.match(pageSource, /referenceAssets: referenceAssets\.map/);
+  assert.match(pageSource, /\.slice\(0, 3\)/);
+  assert.match(pageSource, /const suppressGeneratedImagery = directSceneAssets\.length > 0/);
+  assert.match(pageSource, /startsLogicalScene &&[\s\S]*?!suppressGeneratedImagery/);
+  assert.match(pageSource, /const showsGeneratedBackground = Boolean\(scene\.backgroundImage\) && !hasPlacedAssets/);
+  assert.match(pageSource, /\{showsGeneratedBackground && \(/);
+  assert.match(routeSource, /restrained complementary environment/);
   assert.doesNotMatch(pageSource, /commitVisualReframe/);
   assert.match(cssSource, /generatedImageDockIn/);
+  assert.match(cssSource, /\.scene-layer\.has-presentation-assets \.scene-background/);
   assert.doesNotMatch(cssSource, /view-transition-name: zeroprep-generated-image/);
   assert.match(cssSource, /scene-background-wash/);
   assert.match(cssSource, /padding-right: 48%/);
+  assert.match(cssSource, /assetPanelDockIn/);
 });

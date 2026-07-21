@@ -131,8 +131,15 @@ import brand from "@/config/brand.json";
 import v7 from "@/config/v7.json";
 import type { IconName } from "@/lib/iconography";
 import {
+  encodePresentationAssetCatalog,
+  inferPresentationAssetKind,
   matchPresentationAssets,
+  presentationAssetFit,
+  presentationAssetMode,
+  presentationAssetShape,
+  resolvePresentationAssets,
   type PresentationAsset,
+  type PresentationAssetKind,
 } from "@/lib/presentation-assets";
 import {
   DEFAULT_REALTIME_MODEL,
@@ -148,6 +155,7 @@ type SceneCard = {
   body: string;
   tag?: string;
   icon?: IconName;
+  assetId?: string;
 };
 
 type Scene = {
@@ -166,7 +174,7 @@ type Scene = {
   attribution?: string;
   backgroundImage?: string;
   backgroundStatus?: "generating" | "reframing" | "ready" | "unavailable";
-  matchedAssets?: PresentationAsset[];
+  assetIds?: string[];
 };
 
 type ConnectionState = "ready" | "connecting" | "live" | "error";
@@ -178,9 +186,19 @@ const REALTIME_MODEL_STORAGE_KEY = "zeroprep.realtime-model.v2";
 const IMAGE_REFLOW_DELAY_MS = 560;
 const MAX_PRESENTATION_ASSETS = 12;
 const MAX_PRESENTATION_ASSET_BYTES = 5 * 1024 * 1024;
+const ASSET_KIND_LABELS: Record<PresentationAssetKind, string> = {
+  person: "Person",
+  logo: "Logo",
+  product: "Product",
+  screenshot: "Screenshot",
+  chart: "Chart",
+  photo: "Photo",
+  illustration: "Illustration",
+};
 
 type DirectorCommand = {
   action?: "replace" | "merge_cards" | "focus" | "hold";
+  assetIds?: string[];
   scene?: Partial<Scene>;
   cards?: SceneCard[];
   caption?: string;
@@ -341,6 +359,7 @@ const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
         "Ramsri and Danish met at Codex and decided to build the presentation they wished they had.",
       accent: "violet",
       icon: "handshake",
+      assetIds: ["demo-ramsri", "demo-danish"],
     },
   },
   {
@@ -415,13 +434,30 @@ const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
       icon: "quote",
       quote: "We went from strangers to shipping something we were genuinely excited to present.",
       attribution: "RAMSRI + DANISH / CODEX HACKATHON",
+      assetIds: ["demo-ramsri", "demo-danish"],
     },
   },
 ];
 
 const DEMO_ASSETS: PresentationAsset[] = [
-  { id: "demo-ramsri", name: "Ramsri", aliases: ["ramsri", "ram sri"], url: "/demo-ramsri.jpg" },
-  { id: "demo-danish", name: "Danish", aliases: ["danish"], url: "/demo-danish.jpg" },
+  {
+    id: "demo-ramsri",
+    name: "Ramsri",
+    aliases: ["ramsri", "ram sri"],
+    description: "Person Ramsri, ZeroPrep co-creator and Codex Hyderabad hackathon presenter",
+    kind: "person",
+    mimeType: "image/jpeg",
+    url: "/demo-ramsri.jpg",
+  },
+  {
+    id: "demo-danish",
+    name: "Danish",
+    aliases: ["danish"],
+    description: "Person Danish, ZeroPrep co-creator and Codex Hyderabad hackathon presenter",
+    kind: "person",
+    mimeType: "image/jpeg",
+    url: "/demo-danish.jpg",
+  },
 ];
 
 const ICON_RULES: Array<[RegExp, IconName]> = [
@@ -579,14 +615,50 @@ function defaultAssetName(fileName: string) {
 function readAssetFile(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onerror = () => reject(new Error("The selected image could not be read."));
     reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(file);
   });
 }
 
+function loadAssetImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The image could not be decoded."));
+    image.src = url;
+  });
+}
+
+async function prepareAssetFile(file: File) {
+  const url = await readAssetFile(file);
+  try {
+    const image = await loadAssetImage(url);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      return { url, width, height, referenceUrl: undefined };
+    }
+
+    const maxDimension = 768;
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return { url, width, height, referenceUrl: undefined };
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const referenceUrl = canvas.toDataURL("image/webp", 0.72);
+    return { url, width, height, referenceUrl };
+  } catch {
+    return { url, width: undefined, height: undefined, referenceUrl: undefined };
+  }
+}
+
 function normalizeScene(command: DirectorCommand, current: Scene): Scene | null {
   if (command.action === "hold") return null;
+
+  const assetIds = Array.isArray(command.assetIds) ? command.assetIds.slice(0, 3) : [];
 
   if (command.action === "merge_cards" && command.cards?.length) {
     return {
@@ -599,6 +671,7 @@ function normalizeScene(command: DirectorCommand, current: Scene): Scene | null 
       eyebrow: command.scene?.eyebrow || current.eyebrow,
       accent: command.scene?.accent || current.accent,
       icon: command.scene?.icon || current.icon || "layers",
+      assetIds,
     };
   }
 
@@ -612,10 +685,23 @@ function normalizeScene(command: DirectorCommand, current: Scene): Scene | null 
     eyebrow: incoming.eyebrow || current.eyebrow,
     title: incoming.title || current.title,
     accent: incoming.accent || current.accent,
+    assetIds,
     cards:
       kind === "cards"
         ? (incoming.cards || command.cards || current.cards || []).slice(0, 4)
         : incoming.cards,
+  };
+}
+
+function removeAssetFromScene(scene: Scene, assetId: string) {
+  const sceneUsesAsset = scene.assetIds?.includes(assetId) || scene.cards?.some((card) => card.assetId === assetId);
+  if (!sceneUsesAsset) return scene;
+  return {
+    ...scene,
+    assetIds: scene.assetIds?.filter((id) => id !== assetId),
+    cards: scene.cards?.map((card) =>
+      card.assetId === assetId ? { ...card, assetId: undefined } : card,
+    ),
   };
 }
 
@@ -634,10 +720,12 @@ function Waveform({ active }: { active: boolean }) {
 
 function SceneCanvas({
   scene,
+  presentationAssets,
   sceneNumber = scene.sequence ?? 0,
   phase,
 }: {
   scene: Scene;
+  presentationAssets: PresentationAsset[];
   sceneNumber?: number;
   phase: "entering" | "exiting";
 }) {
@@ -670,20 +758,31 @@ function SceneCanvas({
   const supportDensity = copyDensity(scene.subtitle, 15, 24);
   const metricLength = scene.metric?.length || 0;
   const metricDensity = metricLength > 9 ? "dense" : metricLength > 6 ? "medium" : "short";
-  const usesImageLayout = Boolean(scene.backgroundImage) || scene.backgroundStatus === "reframing";
-  const imageryClass = scene.backgroundImage
+  const selectedAssets = resolvePresentationAssets(scene.assetIds, presentationAssets);
+  const placedAssets = selectedAssets.filter((asset) => presentationAssetMode(asset) === "direct");
+  const hasPlacedAssets = placedAssets.length > 0;
+  const showsGeneratedBackground = Boolean(scene.backgroundImage) && !hasPlacedAssets;
+  const visibleBackgroundStatus = hasPlacedAssets ? undefined : scene.backgroundStatus;
+  const assetsById = new globalThis.Map<string, PresentationAsset>(
+    presentationAssets.map((asset) => [asset.id, asset]),
+  );
+  const usesImageLayout =
+    showsGeneratedBackground ||
+    visibleBackgroundStatus === "reframing" ||
+    hasPlacedAssets;
+  const imageryClass = showsGeneratedBackground
     ? "is-imagery-ready"
-    : scene.backgroundStatus === "reframing"
+    : visibleBackgroundStatus === "reframing"
       ? "is-imagery-reframing"
-      : scene.backgroundStatus === "generating"
+      : visibleBackgroundStatus === "generating"
         ? "is-imagery-pending"
         : "is-imagery-plain";
 
   return (
     <article
-      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} copy-${primaryDensity} support-${supportDensity} ${imageryClass} ${usesImageLayout ? "has-generated-background" : ""}`}
+      className={`scene-layer scene-${scene.kind} is-${phase} accent-${scene.accent} copy-${primaryDensity} support-${supportDensity} ${imageryClass} ${usesImageLayout ? "has-generated-background" : ""} ${hasPlacedAssets ? "has-presentation-assets" : ""}`}
     >
-      {scene.backgroundImage && (
+      {showsGeneratedBackground && (
         <>
           <div
             key={scene.backgroundImage}
@@ -697,12 +796,18 @@ function SceneCanvas({
       <div className="scene-noise" />
       <div className="scene-orbit scene-orbit-one" />
       <div className="scene-orbit scene-orbit-two" />
-      {!!scene.matchedAssets?.length && (
-        <div className={`scene-assets scene-assets-${scene.matchedAssets.length}`} aria-label="Referenced presentation assets">
-          {scene.matchedAssets.map((asset) => (
-            <figure className="scene-asset" key={asset.id}>
-              <NextImage src={asset.url} alt={asset.name} width={300} height={300} unoptimized />
-              <figcaption>{asset.name}</figcaption>
+      {hasPlacedAssets && (
+        <div
+          className={`scene-assets scene-assets-${placedAssets.length} shape-${presentationAssetShape(placedAssets[0])}`}
+          aria-label="Semantically selected presentation assets"
+        >
+          {placedAssets.map((asset) => (
+            <figure
+              className={`scene-asset scene-asset-${asset.kind} fit-${presentationAssetFit(asset)}`}
+              key={asset.id}
+              aria-hidden="true"
+            >
+              <NextImage src={asset.url} alt="" width={300} height={300} unoptimized />
             </figure>
           ))}
         </div>
@@ -733,23 +838,42 @@ function SceneCanvas({
             </div>
             <div className={`card-grid cards-count-${cardCount}`}>
               {(scene.cards || []).map((card, index) => (
-                <div
-                  className={`idea-card card-copy-${copyDensity(card.body, 14, 22)} ${index === featuredCard ? "is-featured" : ""}`}
-                  key={`card-${index}`}
-                  style={{ "--delay": `${index * 90}ms` } as CSSProperties}
-                >
-                  <div className="card-topline">
-                    <span className="card-number">
-                      {card.tag || formatSequenceNumber(index + 1)}
-                    </span>
-                    <i />
-                    <span className="card-icon-chip">
-                      <SemanticIcon name={card.icon || iconFromText(`${card.title} ${card.body}`)} />
-                    </span>
-                  </div>
-                  <h3>{card.title}</h3>
-                  <p>{card.body}</p>
-                </div>
+                (() => {
+                  const cardAsset = card.assetId ? assetsById.get(card.assetId) : undefined;
+                  return (
+                    <div
+                      className={`idea-card card-copy-${copyDensity(card.body, 14, 22)} ${index === featuredCard ? "is-featured" : ""} ${cardAsset ? "has-card-asset" : ""}`}
+                      key={`card-${index}`}
+                      style={{ "--delay": `${index * 90}ms` } as CSSProperties}
+                    >
+                      <div className="card-topline">
+                        <span className="card-number">
+                          {card.tag || formatSequenceNumber(index + 1)}
+                        </span>
+                        <i />
+                        <span
+                          className={`card-icon-chip ${cardAsset ? `has-asset fit-${presentationAssetFit(cardAsset)}` : ""}`}
+                        >
+                          {cardAsset ? (
+                            <NextImage
+                              key={cardAsset.id}
+                              src={cardAsset.url}
+                              alt=""
+                              width={72}
+                              height={72}
+                              aria-hidden="true"
+                              unoptimized
+                            />
+                          ) : (
+                            <SemanticIcon name={card.icon || iconFromText(`${card.title} ${card.body}`)} />
+                          )}
+                        </span>
+                      </div>
+                      <h3>{card.title}</h3>
+                      <p>{card.body}</p>
+                    </div>
+                  );
+                })()
               ))}
             </div>
           </div>
@@ -822,10 +946,23 @@ async function createPdfDocument(images: string[], firstScene?: Scene) {
   return pdf;
 }
 
-function ExportSlide({ scene, index }: { scene: Scene; index: number }) {
+function ExportSlide({
+  scene,
+  index,
+  presentationAssets,
+}: {
+  scene: Scene;
+  index: number;
+  presentationAssets: PresentationAsset[];
+}) {
   return (
     <div className="stage-canvas export-slide" data-export-slide>
-      <SceneCanvas scene={scene} sceneNumber={index + 1} phase="entering" />
+      <SceneCanvas
+        scene={scene}
+        presentationAssets={presentationAssets}
+        sceneNumber={index + 1}
+        phase="entering"
+      />
       <div className="stage-footer">
         <span>{brand.display_name} / AUTO-DIRECTOR</span>
         <span className="stage-progress"><i /></span>
@@ -842,7 +979,7 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [transcript, setTranscript] = useState(
-    "Say something worth seeing. I’ll decide whether to hold, update, or create a new scene.",
+    "Just start speaking and a live presentation will be created",
   );
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState("");
@@ -909,31 +1046,64 @@ export default function Home() {
     try {
       const added = await Promise.all(selectedFiles.map(async (file, index) => {
         const name = defaultAssetName(file.name);
+        const prepared = await prepareAssetFile(file);
         return {
-          id: `${Date.now()}-${index}-${crypto.randomUUID()}`,
+          id: `asset-${index}-${crypto.randomUUID()}`,
           name,
           aliases: [name.toLowerCase()],
-          url: await readAssetFile(file),
+          description: "",
+          kind: inferPresentationAssetKind("", file.name),
+          mimeType: file.type || "application/octet-stream",
+          width: prepared.width,
+          height: prepared.height,
+          url: prepared.url,
+          referenceUrl: prepared.referenceUrl,
         } satisfies PresentationAsset;
       }));
-      setPresentationAssets((assets) => [...assets, ...added]);
+      setPresentationAssets((assets) => {
+        const next = [...assets, ...added];
+        presentationAssetsRef.current = next;
+        return next;
+      });
       setError("");
-      setDirectorStatus(`${added.length} visual asset${added.length === 1 ? "" : "s"} ready`);
+      setDirectorStatus(`${added.length} semantic asset${added.length === 1 ? "" : "s"} ready`);
     } catch (assetError) {
       setError(assetError instanceof Error ? assetError.message : "The image could not be added.");
     }
   }, []);
 
-  const updateAssetName = useCallback((id: string, name: string) => {
-    setPresentationAssets((assets) => assets.map((asset) =>
-      asset.id === id
-        ? { ...asset, name: name.slice(0, 48), aliases: [...new Set([name.trim().toLowerCase(), ...asset.aliases])].filter(Boolean) }
-        : asset,
-    ));
+  const updateAssetDescription = useCallback((id: string, description: string) => {
+    setPresentationAssets((assets) => {
+      const next = assets.map((asset) =>
+        asset.id === id
+          ? {
+              ...asset,
+              description: description.slice(0, 180),
+              kind: inferPresentationAssetKind(description, asset.name),
+            }
+          : asset,
+      );
+      presentationAssetsRef.current = next;
+      return next;
+    });
   }, []);
 
   const removePresentationAsset = useCallback((id: string) => {
-    setPresentationAssets((assets) => assets.filter((asset) => asset.id !== id));
+    setPresentationAssets((assets) => {
+      const next = assets.filter((asset) => asset.id !== id);
+      presentationAssetsRef.current = next;
+      return next;
+    });
+    setScene((currentScene) => {
+      const next = removeAssetFromScene(currentScene, id);
+      sceneRef.current = next;
+      return next;
+    });
+    setPreviousScene((currentScene) =>
+      currentScene ? removeAssetFromScene(currentScene, id) : null,
+    );
+    setHistory((items) => items.map((item) => removeAssetFromScene(item, id)));
+    setDeckScenes((items) => items.map((item) => removeAssetFromScene(item, id)));
   }, []);
 
   const refreshMicrophones = useCallback(async () => {
@@ -1027,13 +1197,43 @@ export default function Home() {
         : nextSceneSequenceRef.current + 1;
       nextSceneSequenceRef.current = Math.max(nextSceneSequenceRef.current, sequence);
     }
+    const availableAssets = presentationAssetsRef.current;
+    const availableAssetIds = new Set(availableAssets.map((asset) => asset.id));
+    const fallbackAssetIds = fittedNext.assetIds === undefined
+      ? matchPresentationAssets(sceneText(fittedNext), availableAssets).map((asset) => asset.id)
+      : [];
+    const selectedAssetIds = [...new Set(fittedNext.assetIds ?? fallbackAssetIds)]
+      .filter((id) => availableAssetIds.has(id))
+      .slice(0, 3);
+    const cards = fittedNext.cards?.map((card) => ({
+      ...card,
+      assetId: card.assetId && availableAssetIds.has(card.assetId) ? card.assetId : undefined,
+    }));
     const numberedNext: Scene = {
       ...fittedNext,
       sequence,
-      matchedAssets:
-        fittedNext.matchedAssets ||
-        matchPresentationAssets(sceneText(fittedNext), presentationAssetsRef.current),
+      assetIds: selectedAssetIds,
+      cards,
     };
+    const sceneSelectedAssets = resolvePresentationAssets(selectedAssetIds, availableAssets, 3);
+    const cardSelectedAssets = resolvePresentationAssets(
+      (cards || []).flatMap((card) => card.assetId ? [card.assetId] : []),
+      availableAssets,
+      4,
+    );
+    const referenceAssets = sceneSelectedAssets
+      .filter((asset) => presentationAssetMode(asset) === "reference" && asset.referenceUrl)
+      .slice(0, 3);
+    const directSceneAssets = sceneSelectedAssets.filter(
+      (asset) => presentationAssetMode(asset) === "direct",
+    );
+    const suppressGeneratedImagery = directSceneAssets.length > 0;
+    const placedAssets = [...new globalThis.Map(
+      [
+        ...directSceneAssets,
+        ...cardSelectedAssets,
+      ].map((asset) => [asset.id, asset]),
+    ).values()];
     const isLogicalSceneUpdate =
       deckMutation === "update" &&
       outgoing.kind !== "cover" &&
@@ -1042,7 +1242,7 @@ export default function Home() {
     const startsLogicalScene =
       deckMutation === "append" || (deckMutation === "update" && !isLogicalSceneUpdate);
 
-    if (!isLogicalSceneUpdate) {
+    if (!isLogicalSceneUpdate || suppressGeneratedImagery) {
       if (imageryRevealTimerRef.current) {
         clearTimeout(imageryRevealTimerRef.current);
         imageryRevealTimerRef.current = null;
@@ -1056,17 +1256,23 @@ export default function Home() {
       imageryAbortRef.current = null;
     }
 
+    if (isLogicalSceneUpdate && suppressGeneratedImagery && outgoing.backgroundImage) {
+      URL.revokeObjectURL(outgoing.backgroundImage);
+      imageryUrlsRef.current.delete(outgoing.backgroundImage);
+    }
+
     const canGenerateImagery =
       v7.imagery.enabled &&
       !imageryUnavailableRef.current &&
       startsLogicalScene &&
+      !suppressGeneratedImagery &&
       numberedNext.kind !== "cover" &&
       numberedNext.kind !== "blank";
     const stagedNext: Scene = isLogicalSceneUpdate
       ? {
           ...numberedNext,
-          backgroundImage: outgoing.backgroundImage,
-          backgroundStatus: outgoing.backgroundStatus,
+          backgroundImage: suppressGeneratedImagery ? undefined : outgoing.backgroundImage,
+          backgroundStatus: suppressGeneratedImagery ? undefined : outgoing.backgroundStatus,
         }
       : startsLogicalScene
         ? {
@@ -1137,6 +1343,13 @@ export default function Home() {
             quote: stagedNext.quote,
             cards: stagedNext.cards,
             accent: stagedNext.accent,
+            exactAssetKinds: [...new Set(placedAssets.map((asset) => asset.kind))],
+            referenceAssets: referenceAssets.map((asset) => ({
+              id: asset.id,
+              name: asset.description || asset.name,
+              kind: asset.kind,
+              dataUrl: asset.referenceUrl,
+            })),
           }),
           signal: controller.signal,
         });
@@ -1379,6 +1592,11 @@ export default function Home() {
 
   const startLive = useCallback(async () => {
     if (connection === "live" || connection === "connecting") return;
+    if (presentationAssetsRef.current.some((asset) => !asset.description.trim())) {
+      setError("Add a short description for every uploaded asset before starting.");
+      setDirectorStatus("Describe uploaded assets");
+      return;
+    }
 
     stopDemo();
     intentionalCloseRef.current = false;
@@ -1451,10 +1669,9 @@ export default function Home() {
         headers: {
           "Content-Type": "application/sdp",
           "X-ZeroPrep-Realtime-Model": selectedRealtimeModel,
-          "X-ZeroPrep-Asset-Catalog": presentationAssetsRef.current
-            .map((asset) => `${asset.name}|${asset.aliases.join(",")}`)
-            .join(";")
-            .slice(0, 2000),
+          "X-ZeroPrep-Asset-Catalog": encodePresentationAssetCatalog(
+            presentationAssetsRef.current,
+          ),
         },
         body: offer.sdp,
       });
@@ -1524,6 +1741,20 @@ export default function Home() {
     if (!slideNodes.length) throw new Error("There are no completed scenes to export yet.");
 
     if ("fonts" in document) await document.fonts.ready;
+    const exportImages = slideNodes.flatMap((node) => Array.from(node.querySelectorAll("img")));
+    await Promise.all(exportImages.map(async (image) => {
+      if (!image.complete) {
+        await new Promise<void>((resolve) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        });
+      }
+      try {
+        await image.decode();
+      } catch {
+        // Export still proceeds when the browser cannot explicitly decode an image.
+      }
+    }));
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
@@ -1685,6 +1916,10 @@ export default function Home() {
   const selectedRealtimeModelOption =
     REALTIME_MODEL_OPTIONS.find((option) => option.id === selectedRealtimeModel) ??
     REALTIME_MODEL_OPTIONS[0];
+  const assetEditingLocked = connection === "live" || connection === "connecting";
+  const hasIncompleteAssetDescriptions = presentationAssets.some(
+    (asset) => !asset.description.trim(),
+  );
   const microphoneHelp =
     connection === "live"
       ? `LIVE INPUT / ${activeMicrophoneLabel || "SYSTEM DEFAULT MICROPHONE"}`
@@ -1763,6 +1998,7 @@ export default function Home() {
               {previousScene && (
                 <SceneCanvas
                   scene={previousScene}
+                  presentationAssets={presentationAssets}
                   sceneNumber={previousScene.sequence ?? Math.max(0, stageSceneNumber - 1)}
                   phase="exiting"
                 />
@@ -1770,6 +2006,7 @@ export default function Home() {
               <SceneCanvas
                 key={`scene-${stageSceneNumber}`}
                 scene={scene}
+                presentationAssets={presentationAssets}
                 sceneNumber={stageSceneNumber}
                 phase="entering"
               />
@@ -1882,56 +2119,6 @@ export default function Home() {
             </div>
           </div>
 
-          <section className="asset-library" aria-labelledby="asset-library-title">
-            <div className="asset-library-heading">
-              <div>
-                <p id="asset-library-title">PRESENTATION ASSETS</p>
-                <small>Upload people, logos, or product images. Mention their names and they appear in the matching scene.</small>
-              </div>
-              <label className="asset-upload-button">
-                <Camera aria-hidden="true" />
-                <span>Add images</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(event) => {
-                    void addPresentationAssets(event.target.files);
-                    event.currentTarget.value = "";
-                  }}
-                  disabled={presentationAssets.length >= MAX_PRESENTATION_ASSETS}
-                />
-              </label>
-            </div>
-            {presentationAssets.length ? (
-              <div className="asset-list">
-                {presentationAssets.map((asset) => (
-                  <div className="asset-library-item" key={asset.id}>
-                    <NextImage src={asset.url} alt="" width={64} height={64} unoptimized />
-                    <label>
-                      <span>MENTION AS</span>
-                      <input
-                        value={asset.name}
-                        maxLength={48}
-                        onChange={(event) => updateAssetName(asset.id, event.target.value)}
-                        aria-label={`Name for ${asset.name}`}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removePresentationAsset(asset.id)}
-                      aria-label={`Remove ${asset.name}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="asset-library-empty">No assets yet — images stay in this browser and are never sent to image generation.</p>
-            )}
-          </section>
-
           <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
             <div className="microphone-picker-heading">
               <label htmlFor="microphone-input">MICROPHONE INPUT</label>
@@ -2037,7 +2224,7 @@ export default function Home() {
               className="mic-button"
               type="button"
               onClick={() => void startLive()}
-              disabled={connection === "connecting"}
+              disabled={connection === "connecting" || hasIncompleteAssetDescriptions}
               aria-label="Start presentation and listen continuously"
             >
               <span className="mic-icon" aria-hidden="true"><i /></span>
@@ -2045,13 +2232,97 @@ export default function Home() {
                 <strong>
                   {connection === "connecting"
                     ? "Starting presentation…"
+                    : hasIncompleteAssetDescriptions
+                      ? "Describe assets to start"
                     : "Start live presentation"}
                 </strong>
-                <small>Listens continuously until stopped</small>
+                <small>
+                  {hasIncompleteAssetDescriptions
+                    ? "Add one short description per image"
+                    : "Listens continuously until stopped"}
+                </small>
               </span>
               <span className="mic-arrow">↗</span>
             </button>
           )}
+
+          <section className="asset-library" aria-labelledby="asset-library-title">
+            <div className="asset-library-heading">
+              <div>
+                <p id="asset-library-title">PRESENTATION ASSETS</p>
+                <small>Add images ZeroPrep can use.</small>
+              </div>
+              <label className="asset-upload-button">
+                <Camera aria-hidden="true" />
+                <span>Add images</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    void addPresentationAssets(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={assetEditingLocked || presentationAssets.length >= MAX_PRESENTATION_ASSETS}
+                />
+              </label>
+            </div>
+            {presentationAssets.length ? (
+              <div className="asset-list">
+                {presentationAssets.map((asset, index) => {
+                  const mode = presentationAssetMode(asset);
+                  const fit = presentationAssetFit(asset);
+                  const assetNumber = index + 1;
+                  return (
+                    <div
+                      className={`asset-library-item is-${mode} ${asset.description.trim() ? "" : "needs-description"}`}
+                      key={asset.id}
+                    >
+                      <NextImage src={asset.url} alt="Uploaded asset preview" width={72} height={72} unoptimized />
+                      <div className="asset-library-fields">
+                        <label>
+                          <span>DESCRIBE IMAGE {assetNumber}</span>
+                          <textarea
+                            value={asset.description}
+                            maxLength={180}
+                            rows={2}
+                            disabled={assetEditingLocked}
+                            placeholder="Who or what is shown?"
+                            onChange={(event) => updateAssetDescription(asset.id, event.target.value)}
+                            aria-label={`Description for uploaded asset ${assetNumber}`}
+                          />
+                        </label>
+                        <div className="asset-auto-policy" aria-label={`Automatic handling for uploaded asset ${assetNumber}`}>
+                          <span>AUTO</span>
+                          <strong>
+                            {ASSET_KIND_LABELS[asset.kind]} · {mode === "reference"
+                              ? "Gemini composition"
+                              : fit === "cover"
+                                ? "Original · safe crop"
+                                : "Original · full image"}
+                          </strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={assetEditingLocked}
+                        onClick={() => removePresentationAsset(asset.id)}
+                        aria-label={`Remove uploaded asset ${assetNumber}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="asset-library-empty">People, products, logos, screenshots, charts, or photos.</p>
+            )}
+            <p className="asset-library-privacy">
+              Describe each image. ZeroPrep chooses when to show it.
+              {assetEditingLocked ? " Stop listening to edit the library." : ""}
+            </p>
+          </section>
 
           {error && (
             <div className="error-note" role="alert">
@@ -2060,20 +2331,17 @@ export default function Home() {
             </div>
           )}
 
-          <div className="decision-legend">
-            <p>THE DIRECTOR DECIDES</p>
-            <ul>
-              <li><span>Hold</span><small>Filler or continuation</small></li>
-              <li><span>Update</span><small>Same idea, more detail</small></li>
-              <li><span>Compose</span><small>New visual beat</small></li>
-            </ul>
-          </div>
         </aside>
       </div>
 
       <div className="export-deck" ref={exportDeckRef} aria-hidden="true">
         {deckScenes.map((deckScene, index) => (
-          <ExportSlide key={deckScene.id} scene={deckScene} index={index} />
+          <ExportSlide
+            key={deckScene.id}
+            scene={deckScene}
+            index={index}
+            presentationAssets={presentationAssets}
+          />
         ))}
       </div>
     </main>

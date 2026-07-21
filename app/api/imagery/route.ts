@@ -20,6 +20,16 @@ type ImageryRequest = {
   quote?: unknown;
   cards?: unknown;
   accent?: unknown;
+  referenceAssets?: unknown;
+  exactAssetKinds?: unknown;
+};
+
+type ImageryReference = {
+  id: string;
+  name: string;
+  kind: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  data: string;
 };
 
 const SCENE_KINDS = new Set(["hero", "cards", "metric", "quote"]);
@@ -52,6 +62,39 @@ function cardSummary(value: unknown) {
     .slice(0, 700);
 }
 
+function exactAssetKinds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => cleanText(item, 24)).filter(Boolean))].slice(0, 4);
+}
+
+function referenceAssets(value: unknown): ImageryReference[] {
+  if (!Array.isArray(value)) return [];
+  let totalBytes = 0;
+  const references: ImageryReference[] = [];
+
+  for (const rawReference of value.slice(0, v7.imagery.max_reference_assets)) {
+    if (!rawReference || typeof rawReference !== "object") continue;
+    const reference = rawReference as Record<string, unknown>;
+    const dataUrl = typeof reference.dataUrl === "string" ? reference.dataUrl : "";
+    if (dataUrl.length > v7.imagery.max_reference_bytes * 1.5 + 100) continue;
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([a-zA-Z0-9+/=]+)$/);
+    if (!match) continue;
+    const bytes = Buffer.byteLength(match[2], "base64");
+    if (!bytes || bytes > v7.imagery.max_reference_bytes) continue;
+    totalBytes += bytes;
+    if (totalBytes > v7.imagery.max_reference_bytes * v7.imagery.max_reference_assets) break;
+    references.push({
+      id: cleanText(reference.id, 80),
+      name: cleanText(reference.name, 80),
+      kind: cleanText(reference.kind, 24),
+      mimeType: match[1] as ImageryReference["mimeType"],
+      data: match[2],
+    });
+  }
+
+  return references.filter((reference) => reference.id && reference.name);
+}
+
 function compositionDirection(kind: string) {
   if (kind === "hero") {
     return "Create one unmistakable visual subject near the center. It must remain clear when the wide image is center-cropped into a tall right-side panel.";
@@ -65,7 +108,7 @@ function compositionDirection(kind: string) {
   return "Create an atmospheric, emotionally resonant image with one clear subject that works inside a dedicated right-side panel.";
 }
 
-function buildPrompt(body: ImageryRequest) {
+function buildPrompt(body: ImageryRequest, references: ImageryReference[]) {
   const kind = cleanText(body.kind, 16);
   const title = cleanText(body.title, 180);
   const subtitle = cleanText(body.subtitle, 500);
@@ -73,6 +116,7 @@ function buildPrompt(body: ImageryRequest) {
   const metric = cleanText(body.metric, 80);
   const metricLabel = cleanText(body.metricLabel, 120);
   const cards = cardSummary(body.cards);
+  const exactKinds = exactAssetKinds(body.exactAssetKinds);
   const accent = ACCENT_DESCRIPTIONS[cleanText(body.accent, 16)] || "vivid lime green";
   const subject = [
     title && `Main idea: ${title}`,
@@ -83,6 +127,17 @@ function buildPrompt(body: ImageryRequest) {
   ]
     .filter(Boolean)
     .join("\n");
+  const referenceDirection = references.length
+    ? `\nReference assets are attached after this instruction: ${references
+        .map((reference, index) => `Reference ${index + 1} is ${reference.name} (${reference.kind})`)
+        .join("; ")}.
+- Use each reference only when it strengthens the main idea. Preserve recognizable identity, product shape, colors, and existing brand marks.
+- Compose a new surrounding scene rather than placing the reference inside a fake slide or frame.
+- Do not invent, rewrite, or distort logos or text from a reference. Leave identity-critical marks visually faithful.`
+    : "";
+  const exactAssetDirection = exactKinds.length
+    ? `\nOriginal ${exactKinds.join(", ")} asset${exactKinds.length === 1 ? " is" : "s are"} overlaid separately in a reserved right-side panel. Create a restrained complementary environment behind the layout. Do not depict, imitate, redraw, or duplicate those assets, people, faces, logos, products, interfaces, charts, or their text.`
+    : "";
 
   return `Create one sophisticated 16:9 editorial presentation background image.
 
@@ -93,10 +148,14 @@ Visual direction:
 - Contemporary editorial photography or tactile mixed-media collage, energetic and premium, with a subtle motion-graphics feeling.
 - Warm ivory, deep black, and ${accent} may guide the palette.
 - ${compositionDirection(kind)}
+- ${references.length
+    ? "The attached references are intentional creative inputs; integrate them naturally while keeping their identity faithful."
+    : "Avoid identifiable public figures and branded products."}
 - The image will be shown unobstructed inside its own reserved presentation panel; make the subject bold, clear, and visually rich. No text will be placed over it, so do not reserve empty copy space.
-- No words, letters, numbers, captions, logos, watermarks, presentation frames, charts with labels, app interfaces, or decorative fake text.
+- No new words, letters, numbers, captions, watermarks, presentation frames, charts with labels, app interfaces, or decorative fake text.
 - Do not render a slide. Produce only the underlying cinematic imagery.
-- Avoid identifiable public figures and branded products.
+${referenceDirection}
+${exactAssetDirection}
 `;
 }
 
@@ -131,16 +190,28 @@ export async function POST(request: Request) {
   const sceneId = cleanText(body.sceneId, 120);
   const kind = cleanText(body.kind, 16);
   const title = cleanText(body.title, 180);
+  const references = referenceAssets(body.referenceAssets);
   if (!sceneId || !SCENE_KINDS.has(kind) || !title) {
     return Response.json({ error: "The scene is incomplete." }, { status: 400 });
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
+    const model = references.length ? v7.imagery.reference_model : v7.imagery.model;
+    const input = references.length
+      ? [
+          { type: "text" as const, text: buildPrompt(body, references) },
+          ...references.map((reference) => ({
+            type: "image" as const,
+            mime_type: reference.mimeType,
+            data: reference.data,
+          })),
+        ]
+      : buildPrompt(body, references);
     const interaction = await ai.interactions.create(
       {
-        model: v7.imagery.model,
-        input: buildPrompt(body),
+        model,
+        input,
         store: false,
         response_format: {
           type: "image",
@@ -171,7 +242,7 @@ export async function POST(request: Request) {
         "Content-Type": mimeType,
         "Cache-Control": "private, no-store, max-age=0",
         "X-ZeroPrep-Scene": sceneId,
-        "X-ZeroPrep-Image-Model": v7.imagery.model,
+        "X-ZeroPrep-Image-Model": model,
       },
     });
   } catch (error) {
