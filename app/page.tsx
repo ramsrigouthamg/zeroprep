@@ -331,81 +331,97 @@ function SemanticIcon({
 const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
   {
     transcript:
-      "The problem is simple: the best ideas arrive faster than our slides can keep up.",
+      "We’re Ramsri and Danish. We met for the first time at the OpenAI Codex Hackathon in Hyderabad and decided to build something together in one intense day.",
+    scene: {
+      id: "inspiration",
+      kind: "hero",
+      eyebrow: "INSPIRATION / HYDERABAD",
+      title: "Two strangers.\nOne intense day.",
+      subtitle:
+        "Ramsri and Danish met at Codex and decided to build the presentation they wished they had.",
+      accent: "violet",
+      icon: "handshake",
+    },
+  },
+  {
+    transcript:
+      "The problem was familiar: creating a presentation often takes more time than preparing what you actually want to say.",
     scene: {
       id: "problem",
-      kind: "hero",
-      eyebrow: "THE OLD WAY  /  TOO SLOW",
-      title: "Ideas move fast.\nSlides don’t.",
-      subtitle:
-        "Static decks turn a live story into a sequence you have to chase.",
-      accent: "violet",
+      kind: "quote",
+      eyebrow: "THE PROBLEM / TOO SLOW",
+      title: "Say the idea.\nSkip the slide prep.",
+      quote: "What if you could simply start talking and the presentation built itself around you?",
+      attribution: "RAMSRI + DANISH / THE ORIGINAL QUESTION",
+      accent: "ember",
       icon: "lightbulb",
     },
   },
   {
     transcript:
-      "So we built three layers: capture what matters, compose the right visual, and perform it in the moment.",
+      "ZeroPrep listens while you speak and creates a live visual presentation in real time. It can hold, add detail, or move to a new visual.",
     scene: {
-      id: "three-layers",
+      id: "what-it-does",
       kind: "cards",
-      eyebrow: "ONE FLOW  /  THREE LAYERS",
+      eyebrow: "WHAT IT DOES / LIVE",
       title: "From voice to visual — live.",
-      subtitle: "One thought becomes a coherent scene, not three disconnected slides.",
+      subtitle: "No slides to prepare. No buttons to click while presenting.",
       accent: "lime",
       icon: "workflow",
       cards: [
-        {
-          tag: "01",
-          title: "Capture",
-          body: "Realtime speech, intent and emphasis.",
-          icon: "message",
-        },
-        {
-          tag: "02",
-          title: "Compose",
-          body: "A scene director chooses the right visual grammar.",
-          icon: "layers",
-        },
-        {
-          tag: "03",
-          title: "Perform",
-          body: "Motion lands exactly when the idea does.",
-          icon: "zap",
-        },
+        { tag: "01", title: "Listen", body: "Realtime speech, intent, and emphasis.", icon: "message" },
+        { tag: "02", title: "Decide", body: "Hold, update, or compose the next visual beat.", icon: "brain" },
+        { tag: "03", title: "Deliver", body: "Download the finished story as PDF or PowerPoint.", icon: "presentation" },
       ],
     },
   },
   {
     transcript:
-      "The result is a stage that can respond in under seven hundred milliseconds without interrupting the speaker.",
+      "We used OpenAI’s Realtime API, Next.js, React, and Gemini imagery. Codex was our pair programmer throughout the hackathon.",
     scene: {
-      id: "latency",
-      kind: "metric",
-      eyebrow: "DESIGNED FOR FLOW",
-      title: "Fast enough to feel inevitable.",
-      subtitle:
-        "The interface keeps listening while the current scene evolves in place.",
+      id: "how-built",
+      kind: "hero",
+      eyebrow: "HOW WE BUILT IT / THE STACK",
+      title: "Realtime in.\nVisuals out.",
+      subtitle: "OpenAI understands the speaker, Next.js renders the stage, and Gemini generates imagery without interrupting the flow.",
       accent: "sky",
-      icon: "timer",
-      metric: "<700",
-      metricLabel: "MS TO FIRST VISUAL RESPONSE",
+      icon: "code",
     },
   },
   {
     transcript:
-      "Because the presentation should follow the speaker — not the other way around.",
+      "The hardest part was making everything feel live: speech keeps arriving while images take longer, and older responses must never replace a newer scene.",
     scene: {
-      id: "manifesto",
-      kind: "quote",
-      eyebrow: "THE PRINCIPLE",
-      title: "Presence over playback.",
-      accent: "ember",
-      icon: "quote",
-      quote: "The presentation follows the speaker — not the other way around.",
-      attribution: `${brand.display_name} / ${brand.category}`,
+      id: "challenge",
+      kind: "metric",
+      eyebrow: "THE CHALLENGE / STAY LIVE",
+      title: "Useful before perfect.",
+      subtitle: "A scene remains clear while imagery loads, fails, or is replaced by a newer idea.",
+      accent: "violet",
+      icon: "shield-check",
+      metric: "1 DAY",
+      metricLabel: "FROM IDEA TO SHIPPED STORY",
     },
   },
+  {
+    transcript:
+      "Our biggest lesson: in one day, two people who had just met went from strangers to shipping something they were genuinely excited to present.",
+    scene: {
+      id: "learned",
+      kind: "quote",
+      eyebrow: "WHAT WE LEARNED / SHIP IT",
+      title: "Just speak.\nLet it follow.",
+      accent: "ember",
+      icon: "quote",
+      quote: "We went from strangers to shipping something we were genuinely excited to present.",
+      attribution: "RAMSRI + DANISH / CODEX HACKATHON",
+    },
+  },
+];
+
+const DEMO_ASSETS: PresentationAsset[] = [
+  { id: "demo-ramsri", name: "Ramsri", aliases: ["ramsri", "ram sri"], url: "/demo-ramsri.jpg" },
+  { id: "demo-danish", name: "Danish", aliases: ["danish"], url: "/demo-danish.jpg" },
 ];
 
 const ICON_RULES: Array<[RegExp, IconName]> = [
@@ -1225,6 +1241,9 @@ export default function Home() {
   const runDemo = useCallback(() => {
     stopDemo();
     setError("");
+    presentationAssetsRef.current = DEMO_ASSETS;
+    setPresentationAssets(DEMO_ASSETS);
+    setDirectorStatus("Demo assets loaded — Ramsri + Danish");
     setIsDemoRunning(true);
     DEMO_BEATS.forEach((beat, index) => {
       const timer = setTimeout(() => {
