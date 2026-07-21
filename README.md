@@ -8,9 +8,9 @@ ZeroPrep listens while you speak and composes a live visual presentation around 
 
 ## Demo
 
-[![Watch the ZeroPrep live presentation demo](https://img.youtube.com/vi/aQ153JIfz_8/maxresdefault.jpg)](https://youtu.be/aQ153JIfz_8?si=br4G-JD-QAoSfaKS)
+[![Watch the ZeroPrep live presentation demo](https://img.youtube.com/vi/oVaLFjXy2gY/maxresdefault.jpg)](https://www.youtube.com/watch?v=oVaLFjXy2gY)
 
-[Watch the ZeroPrep demo on YouTube](https://youtu.be/aQ153JIfz_8?si=br4G-JD-QAoSfaKS)
+[Watch the ZeroPrep demo on YouTube](https://www.youtube.com/watch?v=oVaLFjXy2gY)
 
 ## What it does
 
