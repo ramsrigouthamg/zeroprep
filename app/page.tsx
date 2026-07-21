@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import NextImage from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accessibility,
@@ -130,6 +131,10 @@ import brand from "@/config/brand.json";
 import v7 from "@/config/v7.json";
 import type { IconName } from "@/lib/iconography";
 import {
+  matchPresentationAssets,
+  type PresentationAsset,
+} from "@/lib/presentation-assets";
+import {
   DEFAULT_REALTIME_MODEL,
   isRealtimeModel,
   REALTIME_MODEL_OPTIONS,
@@ -161,6 +166,7 @@ type Scene = {
   attribution?: string;
   backgroundImage?: string;
   backgroundStatus?: "generating" | "reframing" | "ready" | "unavailable";
+  matchedAssets?: PresentationAsset[];
 };
 
 type ConnectionState = "ready" | "connecting" | "live" | "error";
@@ -170,6 +176,8 @@ type ExportFormat = "pdf" | "pptx";
 const MICROPHONE_STORAGE_KEY = "zeroprep.microphone-device-id";
 const REALTIME_MODEL_STORAGE_KEY = "zeroprep.realtime-model.v2";
 const IMAGE_REFLOW_DELAY_MS = 560;
+const MAX_PRESENTATION_ASSETS = 12;
+const MAX_PRESENTATION_ASSET_BYTES = 5 * 1024 * 1024;
 
 type DirectorCommand = {
   action?: "replace" | "merge_cards" | "focus" | "hold";
@@ -323,81 +331,97 @@ function SemanticIcon({
 const DEMO_BEATS: Array<{ transcript: string; scene: Scene }> = [
   {
     transcript:
-      "The problem is simple: the best ideas arrive faster than our slides can keep up.",
+      "We’re Ramsri and Danish. We met for the first time at the OpenAI Codex Hackathon in Hyderabad and decided to build something together in one intense day.",
+    scene: {
+      id: "inspiration",
+      kind: "hero",
+      eyebrow: "INSPIRATION / HYDERABAD",
+      title: "Two strangers.\nOne intense day.",
+      subtitle:
+        "Ramsri and Danish met at Codex and decided to build the presentation they wished they had.",
+      accent: "violet",
+      icon: "handshake",
+    },
+  },
+  {
+    transcript:
+      "The problem was familiar: creating a presentation often takes more time than preparing what you actually want to say.",
     scene: {
       id: "problem",
-      kind: "hero",
-      eyebrow: "THE OLD WAY  /  TOO SLOW",
-      title: "Ideas move fast.\nSlides don’t.",
-      subtitle:
-        "Static decks turn a live story into a sequence you have to chase.",
-      accent: "violet",
+      kind: "quote",
+      eyebrow: "THE PROBLEM / TOO SLOW",
+      title: "Say the idea.\nSkip the slide prep.",
+      quote: "What if you could simply start talking and the presentation built itself around you?",
+      attribution: "RAMSRI + DANISH / THE ORIGINAL QUESTION",
+      accent: "ember",
       icon: "lightbulb",
     },
   },
   {
     transcript:
-      "So we built three layers: capture what matters, compose the right visual, and perform it in the moment.",
+      "ZeroPrep listens while you speak and creates a live visual presentation in real time. It can hold, add detail, or move to a new visual.",
     scene: {
-      id: "three-layers",
+      id: "what-it-does",
       kind: "cards",
-      eyebrow: "ONE FLOW  /  THREE LAYERS",
+      eyebrow: "WHAT IT DOES / LIVE",
       title: "From voice to visual — live.",
-      subtitle: "One thought becomes a coherent scene, not three disconnected slides.",
+      subtitle: "No slides to prepare. No buttons to click while presenting.",
       accent: "lime",
       icon: "workflow",
       cards: [
-        {
-          tag: "01",
-          title: "Capture",
-          body: "Realtime speech, intent and emphasis.",
-          icon: "message",
-        },
-        {
-          tag: "02",
-          title: "Compose",
-          body: "A scene director chooses the right visual grammar.",
-          icon: "layers",
-        },
-        {
-          tag: "03",
-          title: "Perform",
-          body: "Motion lands exactly when the idea does.",
-          icon: "zap",
-        },
+        { tag: "01", title: "Listen", body: "Realtime speech, intent, and emphasis.", icon: "message" },
+        { tag: "02", title: "Decide", body: "Hold, update, or compose the next visual beat.", icon: "brain" },
+        { tag: "03", title: "Deliver", body: "Download the finished story as PDF or PowerPoint.", icon: "presentation" },
       ],
     },
   },
   {
     transcript:
-      "The result is a stage that can respond in under seven hundred milliseconds without interrupting the speaker.",
+      "We used OpenAI’s Realtime API, Next.js, React, and Gemini imagery. Codex was our pair programmer throughout the hackathon.",
     scene: {
-      id: "latency",
-      kind: "metric",
-      eyebrow: "DESIGNED FOR FLOW",
-      title: "Fast enough to feel inevitable.",
-      subtitle:
-        "The interface keeps listening while the current scene evolves in place.",
+      id: "how-built",
+      kind: "hero",
+      eyebrow: "HOW WE BUILT IT / THE STACK",
+      title: "Realtime in.\nVisuals out.",
+      subtitle: "OpenAI understands the speaker, Next.js renders the stage, and Gemini generates imagery without interrupting the flow.",
       accent: "sky",
-      icon: "timer",
-      metric: "<700",
-      metricLabel: "MS TO FIRST VISUAL RESPONSE",
+      icon: "code",
     },
   },
   {
     transcript:
-      "Because the presentation should follow the speaker — not the other way around.",
+      "The hardest part was making everything feel live: speech keeps arriving while images take longer, and older responses must never replace a newer scene.",
     scene: {
-      id: "manifesto",
-      kind: "quote",
-      eyebrow: "THE PRINCIPLE",
-      title: "Presence over playback.",
-      accent: "ember",
-      icon: "quote",
-      quote: "The presentation follows the speaker — not the other way around.",
-      attribution: `${brand.display_name} / ${brand.category}`,
+      id: "challenge",
+      kind: "metric",
+      eyebrow: "THE CHALLENGE / STAY LIVE",
+      title: "Useful before perfect.",
+      subtitle: "A scene remains clear while imagery loads, fails, or is replaced by a newer idea.",
+      accent: "violet",
+      icon: "shield-check",
+      metric: "1 DAY",
+      metricLabel: "FROM IDEA TO SHIPPED STORY",
     },
   },
+  {
+    transcript:
+      "Our biggest lesson: in one day, two people who had just met went from strangers to shipping something they were genuinely excited to present.",
+    scene: {
+      id: "learned",
+      kind: "quote",
+      eyebrow: "WHAT WE LEARNED / SHIP IT",
+      title: "Just speak.\nLet it follow.",
+      accent: "ember",
+      icon: "quote",
+      quote: "We went from strangers to shipping something we were genuinely excited to present.",
+      attribution: "RAMSRI + DANISH / CODEX HACKATHON",
+    },
+  },
+];
+
+const DEMO_ASSETS: PresentationAsset[] = [
+  { id: "demo-ramsri", name: "Ramsri", aliases: ["ramsri", "ram sri"], url: "/demo-ramsri.jpg" },
+  { id: "demo-danish", name: "Danish", aliases: ["danish"], url: "/demo-danish.jpg" },
 ];
 
 const ICON_RULES: Array<[RegExp, IconName]> = [
@@ -529,6 +553,38 @@ function fitSceneToCanvas(scene: Scene): Scene {
   };
 }
 
+function sceneText(scene: Scene) {
+  return [
+    scene.eyebrow,
+    scene.title,
+    scene.subtitle,
+    scene.metric,
+    scene.metricLabel,
+    scene.quote,
+    scene.attribution,
+    ...(scene.cards || []).flatMap((card) => [card.title, card.body]),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function defaultAssetName(fileName: string) {
+  return fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Untitled asset";
+}
+
+function readAssetFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(file);
+  });
+}
+
 function normalizeScene(command: DirectorCommand, current: Scene): Scene | null {
   if (command.action === "hold") return null;
 
@@ -641,6 +697,16 @@ function SceneCanvas({
       <div className="scene-noise" />
       <div className="scene-orbit scene-orbit-one" />
       <div className="scene-orbit scene-orbit-two" />
+      {!!scene.matchedAssets?.length && (
+        <div className={`scene-assets scene-assets-${scene.matchedAssets.length}`} aria-label="Referenced presentation assets">
+          {scene.matchedAssets.map((asset) => (
+            <figure className="scene-asset" key={asset.id}>
+              <NextImage src={asset.url} alt={asset.name} width={300} height={300} unoptimized />
+              <figcaption>{asset.name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
       <div className="scene-content">
         <p className="scene-eyebrow">
           <span />
@@ -795,6 +861,7 @@ export default function Home() {
   const [selectedRealtimeModel, setSelectedRealtimeModel] =
     useState<RealtimeModel>(DEFAULT_REALTIME_MODEL);
   const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
+  const [presentationAssets, setPresentationAssets] = useState<PresentationAsset[]>([]);
 
   const sceneRef = useRef(scene);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -813,10 +880,61 @@ export default function Home() {
   const imageryUnavailableRef = useRef(false);
   const imageryUrlsRef = useRef(new Set<string>());
   const nextSceneSequenceRef = useRef(0);
+  const presentationAssetsRef = useRef<PresentationAsset[]>([]);
 
   useEffect(() => {
     sceneRef.current = scene;
   }, [scene]);
+
+  useEffect(() => {
+    presentationAssetsRef.current = presentationAssets;
+  }, [presentationAssets]);
+
+  const addPresentationAssets = useCallback(async (files: FileList | null) => {
+    if (!files?.length) return;
+    const candidates = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (candidates.length !== files.length) {
+      setError("Only image files can be added to the presentation asset library.");
+    }
+    const withinSizeLimit = candidates.filter((file) => file.size <= MAX_PRESENTATION_ASSET_BYTES);
+    if (withinSizeLimit.length !== candidates.length) {
+      setError("Each presentation asset must be 5 MB or smaller.");
+    }
+    const remaining = Math.max(0, MAX_PRESENTATION_ASSETS - presentationAssetsRef.current.length);
+    const selectedFiles = withinSizeLimit.slice(0, remaining);
+    if (!selectedFiles.length) {
+      setError(`The asset library can contain up to ${MAX_PRESENTATION_ASSETS} images.`);
+      return;
+    }
+    try {
+      const added = await Promise.all(selectedFiles.map(async (file, index) => {
+        const name = defaultAssetName(file.name);
+        return {
+          id: `${Date.now()}-${index}-${crypto.randomUUID()}`,
+          name,
+          aliases: [name.toLowerCase()],
+          url: await readAssetFile(file),
+        } satisfies PresentationAsset;
+      }));
+      setPresentationAssets((assets) => [...assets, ...added]);
+      setError("");
+      setDirectorStatus(`${added.length} visual asset${added.length === 1 ? "" : "s"} ready`);
+    } catch (assetError) {
+      setError(assetError instanceof Error ? assetError.message : "The image could not be added.");
+    }
+  }, []);
+
+  const updateAssetName = useCallback((id: string, name: string) => {
+    setPresentationAssets((assets) => assets.map((asset) =>
+      asset.id === id
+        ? { ...asset, name: name.slice(0, 48), aliases: [...new Set([name.trim().toLowerCase(), ...asset.aliases])].filter(Boolean) }
+        : asset,
+    ));
+  }, []);
+
+  const removePresentationAsset = useCallback((id: string) => {
+    setPresentationAssets((assets) => assets.filter((asset) => asset.id !== id));
+  }, []);
 
   const refreshMicrophones = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -909,7 +1027,13 @@ export default function Home() {
         : nextSceneSequenceRef.current + 1;
       nextSceneSequenceRef.current = Math.max(nextSceneSequenceRef.current, sequence);
     }
-    const numberedNext: Scene = { ...fittedNext, sequence };
+    const numberedNext: Scene = {
+      ...fittedNext,
+      sequence,
+      matchedAssets:
+        fittedNext.matchedAssets ||
+        matchPresentationAssets(sceneText(fittedNext), presentationAssetsRef.current),
+    };
     const isLogicalSceneUpdate =
       deckMutation === "update" &&
       outgoing.kind !== "cover" &&
@@ -1117,6 +1241,9 @@ export default function Home() {
   const runDemo = useCallback(() => {
     stopDemo();
     setError("");
+    presentationAssetsRef.current = DEMO_ASSETS;
+    setPresentationAssets(DEMO_ASSETS);
+    setDirectorStatus("Demo assets loaded — Ramsri + Danish");
     setIsDemoRunning(true);
     DEMO_BEATS.forEach((beat, index) => {
       const timer = setTimeout(() => {
@@ -1324,6 +1451,10 @@ export default function Home() {
         headers: {
           "Content-Type": "application/sdp",
           "X-ZeroPrep-Realtime-Model": selectedRealtimeModel,
+          "X-ZeroPrep-Asset-Catalog": presentationAssetsRef.current
+            .map((asset) => `${asset.name}|${asset.aliases.join(",")}`)
+            .join(";")
+            .slice(0, 2000),
         },
         body: offer.sdp,
       });
@@ -1750,6 +1881,56 @@ export default function Home() {
               <span>{directorStatus.toUpperCase()}</span>
             </div>
           </div>
+
+          <section className="asset-library" aria-labelledby="asset-library-title">
+            <div className="asset-library-heading">
+              <div>
+                <p id="asset-library-title">PRESENTATION ASSETS</p>
+                <small>Upload people, logos, or product images. Mention their names and they appear in the matching scene.</small>
+              </div>
+              <label className="asset-upload-button">
+                <Camera aria-hidden="true" />
+                <span>Add images</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    void addPresentationAssets(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={presentationAssets.length >= MAX_PRESENTATION_ASSETS}
+                />
+              </label>
+            </div>
+            {presentationAssets.length ? (
+              <div className="asset-list">
+                {presentationAssets.map((asset) => (
+                  <div className="asset-library-item" key={asset.id}>
+                    <NextImage src={asset.url} alt="" width={64} height={64} unoptimized />
+                    <label>
+                      <span>MENTION AS</span>
+                      <input
+                        value={asset.name}
+                        maxLength={48}
+                        onChange={(event) => updateAssetName(asset.id, event.target.value)}
+                        aria-label={`Name for ${asset.name}`}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removePresentationAsset(asset.id)}
+                      aria-label={`Remove ${asset.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="asset-library-empty">No assets yet — images stay in this browser and are never sent to image generation.</p>
+            )}
+          </section>
 
           <div className={`microphone-picker ${connection === "live" ? "is-live" : ""}`}>
             <div className="microphone-picker-heading">
